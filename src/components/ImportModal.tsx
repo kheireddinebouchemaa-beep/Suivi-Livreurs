@@ -15,6 +15,117 @@ const COLUMNS_TO_VERIFY = [
   "Livreur", "Station déstination", "Dispatché au livreur le", "Livré le", "Retour demandé le"
 ];
 
+// Fonction utilitaire de parsing CSV robuste qui s'auto-adapte aux délimiteurs (, ou ;) et gère le BOM UTF-8
+function parseCSV(text: string): Record<string, any>[] {
+  let cleanedText = text;
+  // Retirer le BOM s'il existe (généré souvent par Excel pour signaler du UTF-8)
+  if (cleanedText.startsWith("\ufeff")) {
+    cleanedText = cleanedText.substring(1);
+  }
+
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let currentField = "";
+  let insideQuotes = false;
+  
+  // Compter les délimiteurs potentiels sur le début de texte pour deviner le séparateur
+  let commaCount = 0;
+  let semiCount = 0;
+  let tabCount = 0;
+  
+  let firstLineLength = cleanedText.indexOf("\n");
+  if (firstLineLength === -1) firstLineLength = cleanedText.length;
+  const limit = Math.min(firstLineLength, 2000);
+  
+  let inQ = false;
+  for (let i = 0; i < limit; i++) {
+    const char = cleanedText[i];
+    if (char === '"') {
+      inQ = !inQ;
+    }
+    if (!inQ) {
+      if (char === ',') commaCount++;
+      else if (char === ';') semiCount++;
+      else if (char === '\t') tabCount++;
+    }
+  }
+  
+  let sep = ',';
+  if (semiCount > commaCount && semiCount > tabCount) {
+    sep = ';';
+  } else if (tabCount > commaCount && tabCount > semiCount) {
+    sep = '\t';
+  }
+  
+  for (let i = 0; i < cleanedText.length; i++) {
+    const char = cleanedText[i];
+    const nextChar = cleanedText[i + 1];
+    
+    if (char === '"') {
+      if (insideQuotes && nextChar === '"') {
+        currentField += '"';
+        i++; // Sauter le second guillemet
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+    } else if (char === sep && !insideQuotes) {
+      row.push(currentField);
+      currentField = "";
+    } else if ((char === '\r' || char === '\n') && !insideQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      row.push(currentField);
+      if (row.length > 0 && !(row.length === 1 && row[0] === "")) {
+        lines.push(row);
+      }
+      row = [];
+      currentField = "";
+    } else {
+      currentField += char;
+    }
+  }
+  
+  if (currentField !== "" || row.length > 0) {
+    row.push(currentField);
+    if (row.length > 0 && !(row.length === 1 && row[0] === "")) {
+      lines.push(row);
+    }
+  }
+  
+  if (lines.length === 0) return [];
+  
+  // Nettoyage et trim des en-têtes
+  const headers = lines[0].map(h => h.trim().replace(/^"|"$/g, ""));
+  const rows: Record<string, any>[] = [];
+  
+  for (let r = 1; r < lines.length; r++) {
+    const values = lines[r];
+    const obj: Record<string, any> = {};
+    let hasData = false;
+    
+    headers.forEach((header, index) => {
+      let val = values[index];
+      if (val === undefined) {
+        val = "";
+      } else {
+        val = val.trim().replace(/^"|"$/g, "");
+      }
+      if (val !== "") {
+        hasData = true;
+      }
+      if (header) {
+        obj[header] = val;
+      }
+    });
+    
+    if (hasData) {
+      rows.push(obj);
+    }
+  }
+  return rows;
+}
+
 export default function ImportModal({ onClose, onImportSuccess }: ImportModalProps) {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -47,7 +158,7 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
       const ext = droppedFile.name.split(".").pop()?.toLowerCase();
-      if (ext === "xlsx" || ext === "xls") {
+      if (ext === "xlsx" || ext === "xls" || ext === "csv") {
         handleFileSelection(droppedFile);
       }
     }
@@ -59,13 +170,14 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
     }
   };
 
-  // Pré-analyse initiale du fichier Excel sélectionné
+  // Pré-analyse initiale du fichier Excel/CSV sélectionné
   const handleFileSelection = async (selectedFile: File) => {
     setFile(selectedFile);
     setReadingFile(true);
     setParsedRows(null);
     setParseProgress(0);
-    setParseStepText("Chargement du fichier Excel...");
+    const isCsv = selectedFile.name.split(".").pop()?.toLowerCase() === "csv";
+    setParseStepText(isCsv ? "Chargement du fichier CSV..." : "Chargement du fichier Excel...");
 
     try {
       const reader = new FileReader();
@@ -74,15 +186,22 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
           const data = e.target?.result;
           if (!data) throw new Error("Fichier vide ou illisible.");
 
-          const workbook = XLSX.read(data, { type: "array" });
-          const firstSheetName = workbook.SheetNames[0];
-          setSheetName(firstSheetName);
+          let jsonRows: any[] = [];
+          if (isCsv) {
+            setSheetName("Export CSV");
+            const text = data as string;
+            jsonRows = parseCSV(text);
+          } else {
+            const workbook = XLSX.read(data, { type: "array" });
+            const firstSheetName = workbook.SheetNames[0];
+            setSheetName(firstSheetName);
 
-          const worksheet = workbook.Sheets[firstSheetName];
-          const jsonRows = XLSX.utils.sheet_to_json(worksheet);
+            const worksheet = workbook.Sheets[firstSheetName];
+            jsonRows = XLSX.utils.sheet_to_json(worksheet);
+          }
 
           if (jsonRows.length === 0) {
-            throw new Error("L'onglet est vide.");
+            throw new Error(isCsv ? "Le fichier CSV est vide ou le format des colonnes est incorrect." : "L'onglet est vide.");
           }
 
           setParsedRows(jsonRows);
@@ -118,7 +237,11 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
         resetState();
       };
 
-      reader.readAsArrayBuffer(selectedFile);
+      if (isCsv) {
+        reader.readAsText(selectedFile, "UTF-8");
+      } else {
+        reader.readAsArrayBuffer(selectedFile);
+      }
     } catch (err) {
       alert("Erreur générale de lecture.");
       resetState();
@@ -210,7 +333,7 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 onChange={handleFileInputChange}
                 className="hidden"
               />
@@ -218,8 +341,8 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
                 <Upload className="w-7 h-7" />
               </div>
               <div>
-                <p className="text-xs font-bold text-[#1B3A5C]">Glisser-déposer votre classeur Excel ici</p>
-                <p className="text-[10px] text-slate-500 mt-1">uniquement formats .xlsx, .xls</p>
+                <p className="text-xs font-bold text-[#1B3A5C]">Glisser-déposer votre fichier Excel ou CSV ici</p>
+                <p className="text-[10px] text-slate-500 mt-1">Formats supportés : .xlsx, .xls, .csv</p>
               </div>
               <button className="px-3 py-1.5 bg-[#E8741A] hover:bg-[#cf620f] text-white text-xs font-bold rounded-lg transition-all shadow-xs">
                 Choisir un fichier
