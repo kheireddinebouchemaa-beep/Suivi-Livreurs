@@ -29,6 +29,17 @@ export default function App() {
   // Horloge de la barre d'en-tête (HH:MM:SS)
   const [currentTime, setCurrentTime] = useState<string>("");
 
+  // Détection prefers-reduced-motion
+  const [prefersReduced, setPrefersReduced] = useState<boolean>(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReduced(mediaQuery.matches);
+    const listener = (e: MediaQueryListEvent) => setPrefersReduced(e.matches);
+    mediaQuery.addEventListener("change", listener);
+    return () => mediaQuery.removeEventListener("change", listener);
+  }, []);
+
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -212,10 +223,10 @@ export default function App() {
         <AnimatePresence mode="wait">
           <motion.div
             key={selectedPage}
-            initial={{ opacity: 0, y: 10 }}
+            initial={prefersReduced ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
+            exit={prefersReduced ? { opacity: 1 } : { opacity: 0, y: -16 }}
+            transition={prefersReduced ? { duration: 0 } : { duration: 0.35, ease: "easeOut" }}
             className="w-full"
           >
             {selectedPage === "overview" && (
@@ -263,9 +274,10 @@ export default function App() {
       <AnimatePresence>
         {toast.message && (
           <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            initial={prefersReduced ? { opacity: 1 } : { opacity: 0, y: 40, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.95 }}
+            transition={prefersReduced ? { duration: 0 } : { duration: 0.3 }}
             className="fixed bottom-6 right-6 z-50 p-4 rounded-xl shadow-2xl flex items-center space-x-2 bg-slate-900 text-white min-w-[280px] border border-slate-800"
           >
             <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />

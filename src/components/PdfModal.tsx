@@ -4,6 +4,7 @@ import autoTable from "jspdf-autotable";
 import { AppData, LivreurRecap, StationRecap } from "../types";
 import { N, F, P, getPerfCategory, getDelaiCategory, getRetourCategory, getCompositeScore } from "../utils";
 import { FileText, Loader2, X, Download, ShieldAlert, Clock, Trophy, Map } from "lucide-react";
+import { motion } from "motion/react";
 
 interface PdfModalProps {
   data: AppData;
@@ -13,6 +14,7 @@ interface PdfModalProps {
 
 export default function PdfModal({ data, onClose, onShowToast }: PdfModalProps) {
   const [generating, setGenerating] = useState(false);
+  const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const [stepText, setStepText] = useState("");
 
   // Formatage de la date du jour pour l'en-tête et les noms de fichiers
@@ -106,7 +108,7 @@ export default function PdfModal({ data, onClose, onShowToast }: PdfModalProps) 
     }
   };
 
-  const generatePDF = async (section: "complet" | "performance" | "retours" | "delais" | "stations") => {
+  const generatePDF = async (section: "complet" | "performance" | "retours" | "delais" | "stations" | "soc") => {
     setGenerating(true);
     setStepText("Initialisation des utilitaires PDF...");
 
@@ -457,6 +459,117 @@ export default function PdfModal({ data, onClose, onShowToast }: PdfModalProps) 
           });
         }
 
+        if (section === "soc") {
+          setStepText("Génération du rapport d'excellence SOC...");
+          drawPageHeader(doc, "RAPPORT DÉTAILLÉ SCORE OPÉRATIONNEL COMPOSITE (SOC)");
+          
+          // 1. Titre et description méthodologique
+          drawSectionTitle(doc, "MÉTHODOLOGIE ET SEUILS DU RATING OPERATIONAL SOC", 29);
+          
+          doc.setFont("Helvetica", "normal");
+          doc.setFontSize(8);
+          doc.setTextColor(51, 65, 85);
+          
+          const explanationLines = [
+            "Le Score Opérationnel Composite (SOC) évalue chaque livreur d'IMIR Logistics sur base de 3 critères opérationnels majeurs :",
+            "  - 30% : Taux de Livraison (performance brute sur livraison finale réussie)",
+            "  - 20% : Vitesse d'Expédition (basé sur le délai moyen logistique de distribution)",
+            "  - 50% : Performance d'Encaissement (basé sur le délai moyen de reversement)",
+            "",
+            "Formule de ponderation brute : SOC = (Livr% * 30%) + (VitessePts * 20%) + (EncaissementPts * 50%)",
+            "Classification d'excellence : Excellent (>= 80 pts) | Bon (60-80 pts) | Moyen (40-60 pts) | Faible (< 40 pts)"
+          ];
+          
+          let yOffset = 36;
+          explanationLines.forEach(line => {
+            doc.text(line, 14, yOffset);
+            yOffset += 4.5;
+          });
+          
+          // 2. Elite du Réseau - Top 20 Livreurs
+          drawSectionTitle(doc, "ÉLITE DU RÉSEAU — TOP 20 PARTENAIRES SOC (dispatches >= 15)", yOffset + 4);
+          
+          const sortedSOCList = [...data.recap]
+            .filter(l => l.dispatches >= 15)
+            .sort((a, b) => b.soc - a.soc);
+            
+          const top20SOC = sortedSOCList.slice(0, 20);
+          
+          autoTable(doc, {
+            startY: yOffset + 8,
+            margin: { left: 14, right: 14 },
+            head: [["Rang", "Livreur", "Station", "Taux (30%)", "Vitesse (20%)", "Encaissement (50%)", "Vol", "Score SOC"]],
+            body: top20SOC.map((l, i) => [
+              (i + 1).toString(),
+              l.livreur,
+              l.station.replace(/^(\d+)\s*-\s*Station\s+/, ""),
+              `${l.soc_taux.toFixed(1)}/30`,
+              `${l.soc_rapidite.toFixed(1)}/20`,
+              `${l.soc_enc.toFixed(1)}/50`,
+              N(l.dispatches),
+              `${l.soc.toFixed(1)}`
+            ]),
+            headStyles: { fillColor: [79, 70, 229], fontSize: 7, fontStyle: "bold" },
+            bodyStyles: { fontSize: 6.5, textColor: [31, 41, 55] },
+            alternateRowStyles: { fillColor: [243, 244, 246] },
+            didParseCell: (dataCell) => {
+              if (dataCell.section === "body" && dataCell.column.index === 7) {
+                const textVal = String(dataCell.cell.raw);
+                const scoreNum = parseFloat(textVal);
+                if (scoreNum >= 80) {
+                  dataCell.cell.styles.textColor = [22, 163, 74];
+                  dataCell.cell.styles.fontStyle = "bold";
+                } else if (scoreNum < 40) {
+                  dataCell.cell.styles.textColor = [220, 38, 38];
+                  dataCell.cell.styles.fontStyle = "bold";
+                }
+              }
+            }
+          });
+          
+          // Page 2: Classement Complet SOC
+          doc.addPage();
+          drawPageHeader(doc, "CLASSEMENT INTEGRAL LOGISTIQUE SOC");
+          drawSectionTitle(doc, "CLASSEMENT DÉTAILLÉ DE L'ENSEMBLE DU RÉSEAU DES DRIVERS (dispatches >= 10)", 29);
+          
+          const activeFilteredAndSortedSOC = [...data.recap]
+            .filter(l => l.dispatches >= 10)
+            .sort((a, b) => b.soc - a.soc);
+            
+          autoTable(doc, {
+            startY: 33,
+            margin: { left: 14, right: 14 },
+            head: [["#", "Livreur", "Station Destination", "Dispatchs", "Livrés", "Tx Livr.", "Delai Disp.", "Delai Enc.", "Score final SOC"]],
+            body: activeFilteredAndSortedSOC.map((l, i) => [
+              (i + 1).toString(),
+              l.livreur,
+              l.station.replace(/^(\d+)\s*-\s*Station\s+/, ""),
+              N(l.dispatches),
+              N(l.livres),
+              P(l.taux_livraison),
+              l.delai_moy_h > 0 ? `${F(l.delai_moy_h)}h` : "–",
+              l.delai_enc_h > 0 ? `${F(l.delai_enc_h)}h` : "–",
+              `${l.soc.toFixed(1)} / 100`
+            ]),
+            headStyles: { fillColor: [27, 58, 92], fontSize: 7, fontStyle: "bold" },
+            bodyStyles: { fontSize: 6.5, textColor: [51, 65, 85] },
+            alternateRowStyles: { fillColor: [249, 250, 251] },
+            didParseCell: (dataCell) => {
+              if (dataCell.section === "body" && dataCell.column.index === 8) {
+                const textVal = String(dataCell.cell.raw);
+                const scoreNum = parseFloat(textVal);
+                if (scoreNum >= 80) {
+                  dataCell.cell.styles.textColor = [22, 163, 74];
+                  dataCell.cell.styles.fontStyle = "bold";
+                } else if (scoreNum < 40) {
+                  dataCell.cell.styles.textColor = [220, 38, 38];
+                  dataCell.cell.styles.fontStyle = "bold";
+                }
+              }
+            }
+          });
+        }
+
         // ÉTAPE FINALE : Appliquer les numéros de page pour toutes les pages créées
         setStepText("Indexation et mise en page finale du document...");
         addPageNumbers(doc);
@@ -478,8 +591,17 @@ export default function PdfModal({ data, onClose, onShowToast }: PdfModalProps) 
   };
 
   return (
-    <div className="fixed inset-0 bg-[#1B3A5C]/35 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="bg-white/85 backdrop-blur-xl rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-white/30">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 bg-[#1B3A5C]/35 backdrop-blur-md flex items-center justify-center z-50 p-4"
+    >
+      <motion.div
+        initial={prefersReduced ? { opacity: 0 } : { scale: 0.95, opacity: 0, y: 12 }}
+        animate={prefersReduced ? { opacity: 1 } : { scale: 1, opacity: 1, y: 0 }}
+        transition={prefersReduced ? { duration: 0.15 } : { duration: 0.25, ease: "easeOut" }}
+        className="bg-white/85 backdrop-blur-xl rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-white/30"
+      >
         
         {/* Header */}
         <div className="bg-[#1B3A5C]/90 text-white p-4 flex justify-between items-center backdrop-blur-sm">
@@ -561,6 +683,15 @@ export default function PdfModal({ data, onClose, onShowToast }: PdfModalProps) 
                     <Map className="w-4.5 h-4.5 text-blue-800" />
                     <span>🏢 Par Station</span>
                   </button>
+
+                  {/* Rapport SOC Composite */}
+                  <button
+                    onClick={() => generatePDF("soc")}
+                    className="py-2.5 bg-indigo-50/40 border border-indigo-200/50 text-indigo-900 hover:bg-indigo-100 font-bold text-[11px] rounded-xl transition-colors flex flex-col items-center justify-center space-y-1 col-span-2 backdrop-blur-sm"
+                  >
+                    <Trophy className="w-4.5 h-4.5 text-indigo-600 animate-pulse" />
+                    <span>👑 Rapport Élite SOC Composite</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -571,7 +702,7 @@ export default function PdfModal({ data, onClose, onShowToast }: PdfModalProps) 
           </div>
 
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

@@ -1,9 +1,44 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 import { AppData, LivreurRecap } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
-import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight } from "lucide-react";
-import { motion } from "motion/react";
+import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { exportOverviewExcel } from "../exportExcel";
+import { exportOverviewPdf } from "../exportPdf";
+
+function AnimatedNumber({ value, suffix = "", isDecimal = false }: { value: number; suffix?: string; isDecimal?: boolean }) {
+  const [display, setDisplay] = useState(0);
+  const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  useEffect(() => {
+    if (prefersReduced) {
+      setDisplay(value);
+      return;
+    }
+    let startTimestamp: number | null = null;
+    const duration = 800; // ms
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      if (isDecimal) {
+        setDisplay(parseFloat((progress * value).toFixed(1)) as any);
+      } else {
+        setDisplay(Math.floor(progress * value));
+      }
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    };
+    requestAnimationFrame(step);
+  }, [value, isDecimal, prefersReduced]);
+
+  if (isDecimal) {
+    const output = typeof display === "number" ? display.toFixed(1) : display;
+    return <span>{output}{suffix}</span>;
+  }
+  return <span>{display.toLocaleString("fr-DZ")}{suffix}</span>;
+}
 
 interface OverviewTabProps {
   data: AppData;
@@ -209,8 +244,84 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
     };
   }, [data]);
 
+  const averageSOC = data.recap.length > 0
+    ? parseFloat((data.recap.reduce((sum, item) => sum + (item.soc || 0), 0) / data.recap.length).toFixed(1))
+    : 0;
+
+  const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const containerVariants = {
+    hidden: {},
+    show: {
+      transition: {
+        staggerChildren: prefersReduced ? 0 : 0.05
+      }
+    }
+  };
+
+  const cardVariants = {
+    hidden: prefersReduced ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 12, scale: 0.93 },
+    show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.3 } }
+  };
+
+  const [localToast, setLocalToast] = useState<string | null>(null);
+
+  const triggerLocalToast = (msg: string) => {
+    setLocalToast(msg);
+    setTimeout(() => {
+      setLocalToast(null);
+    }, 3000);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Tab Header with export buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-[#DDE3EE]/40 gap-3">
+        <div>
+          <h2 className="text-sm font-bold tracking-tight uppercase text-[#1B3A5C] flex items-center gap-1.5">
+            📊 Vue d'ensemble globale
+          </h2>
+          <p className="text-[11px] text-[#6B7A99]">Performance consolidée du réseau de distribution IMIR</p>
+        </div>
+        
+        {/* Export Buttons */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          {/* Excel Button */}
+          <motion.button
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={() => {
+              exportOverviewExcel(data);
+              triggerLocalToast("✅ Export Excel généré");
+            }}
+            disabled={!data || !data.recap || data.recap.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors select-none ${
+              (!data || !data.recap || data.recap.length === 0)
+                ? "opacity-50 cursor-not-allowed bg-slate-100 border-slate-200 text-slate-400"
+                : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+            }`}
+          >
+            <TableIcon size={13} /> Excel
+          </motion.button>
+
+          {/* PDF Button */}
+          <motion.button
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={() => {
+              exportOverviewPdf(data);
+              triggerLocalToast("✅ Rapport PDF généré");
+            }}
+            disabled={!data || !data.recap || data.recap.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors select-none ${
+              (!data || !data.recap || data.recap.length === 0)
+                ? "opacity-50 cursor-not-allowed bg-slate-100 border-slate-200 text-slate-400"
+                : "border-orange-300 bg-orange-50 text-[#E8741A] hover:bg-orange-100 cursor-pointer"
+            }`}
+          >
+            <FileText size={13} /> PDF
+          </motion.button>
+        </div>
+      </div>
+
       {/* 1. Bandeau "Spotlight" (fond dégradé navy glass) */}
       <div className="bg-gradient-to-r from-[#1B3A5C]/85 via-[#244C78]/85 to-[#1B3A5C]/85 backdrop-blur-md rounded-2xl p-6 text-white shadow-md relative overflow-hidden border border-white/10">
         {/* Glow Effet */}
@@ -221,52 +332,57 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-6 divide-y md:divide-y-0 md:divide-x divide-white/10">
           <div className="pt-3 md:pt-0">
             <span className="block text-xs text-slate-300">Livreurs actifs</span>
-            <span className="text-2xl font-bold font-mono text-white">{N(data.global.nb_livreurs)}</span>
+            <span className="text-2xl font-bold font-mono text-white"><AnimatedNumber value={data.global.nb_livreurs} /></span>
           </div>
           
           <div className="pt-3 md:pt-0 md:pl-4">
             <span className="block text-xs text-slate-300">Total Dispatchés</span>
-            <span className="text-2xl font-bold font-mono text-white">{N(data.global.total_dispatches)}</span>
+            <span className="text-2xl font-bold font-mono text-white"><AnimatedNumber value={data.global.total_dispatches} /></span>
           </div>
 
           <div className="pt-3 md:pt-0 md:pl-4">
             <span className="block text-xs text-slate-300">Total Livrés</span>
-            <span className="text-2xl font-bold font-mono text-[#18A558]">{N(data.global.total_livres)}</span>
+            <span className="text-2xl font-bold font-mono text-[#18A558]"><AnimatedNumber value={data.global.total_livres} /></span>
           </div>
 
           <div className="pt-3 md:pt-0 md:pl-4">
             <span className="block text-xs text-slate-300">Taux Livraison</span>
-            <span className="text-2xl font-bold font-mono text-orange-450 text-[#E8741A]">{P(data.global.taux_global)}</span>
+            <span className="text-2xl font-bold font-mono text-orange-450 text-[#E8741A]"><AnimatedNumber value={data.global.taux_global} isDecimal suffix="%" /></span>
           </div>
 
           <div className="pt-3 md:pt-0 md:pl-4">
             <span className="block text-xs text-slate-300">Total Retours</span>
-            <span className="text-2xl font-bold font-mono text-[#D93025]">{N(data.global.total_retours)}</span>
+            <span className="text-2xl font-bold font-mono text-[#D93025]"><AnimatedNumber value={data.global.total_retours} /></span>
           </div>
 
           <div className="pt-3 md:pt-0 md:pl-4">
             <span className="block text-xs text-slate-300">Taux Retour</span>
             <span className="text-2xl font-bold font-mono text-red-300">
-              {data.global.total_dispatches > 0 ? P((data.global.total_retours / data.global.total_dispatches) * 100) : "0%"}
+              <AnimatedNumber value={data.global.total_dispatches > 0 ? (data.global.total_retours / data.global.total_dispatches) * 100 : 0} isDecimal suffix="%" />
             </span>
           </div>
 
           <div className="pt-3 md:pt-0 md:pl-4">
             <span className="block text-xs text-slate-300">Délai Moyen</span>
-            <span className="text-2xl font-bold font-mono text-yellow-400">{F(data.global.delai_moy)}h</span>
+            <span className="text-2xl font-bold font-mono text-yellow-400"><AnimatedNumber value={data.global.delai_moy} isDecimal suffix="h" /></span>
           </div>
         </div>
       </div>
 
-      {/* 2. Grille 8 KPI cards (4x2) avec bande colorée en haut */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 2. Grille de 9 KPI cards (3x3) avec animations et bande de couleur en haut */}
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+      >
         {/* Taux livraison global */}
-        <div className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-emerald-500 w-full"></div>
           <div className="p-4 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Taux Livraison Global</p>
-              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1">{P(data.global.taux_global)}</h3>
+              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.taux_global} isDecimal suffix="%" /></h3>
               <p className="text-[10px] text-emerald-600 mt-1 flex items-center font-sans font-medium">
                 <CheckCircle className="w-3 h-3 mr-1" /> Performance cible : ≥ 90%
               </p>
@@ -275,113 +391,134 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
               <TrendingUp className="w-5 h-5" />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Total dispatchés */}
-        <div className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-sky-600 w-full"></div>
           <div className="p-4 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Total Dispatchés</p>
-              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1">{N(data.global.total_dispatches)}</h3>
+              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.total_dispatches} /></h3>
               <p className="text-[10px] text-slate-500 mt-1 font-sans">Colis confiés au réseau</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-sky-50 flex items-center justify-center text-sky-600">
               <Package className="w-5 h-5" />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Total livrés */}
-        <div className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-emerald-600 w-full"></div>
           <div className="p-4 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Total Livrés</p>
-              <h3 className="text-3xl font-bold font-mono text-emerald-600 mt-1">{N(data.global.total_livres)}</h3>
+              <h3 className="text-3xl font-bold font-mono text-emerald-600 mt-1"><AnimatedNumber value={data.global.total_livres} /></h3>
               <p className="text-[10px] text-emerald-500 mt-1 font-sans">Remises clients effectives</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
               <CheckCircle className="w-5 h-5" />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Total retours */}
-        <div className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-red-500 w-full"></div>
           <div className="p-4 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Total Retours</p>
-              <h3 className="text-3xl font-bold font-mono text-red-600 mt-1">{N(data.global.total_retours)}</h3>
+              <h3 className="text-3xl font-bold font-mono text-red-600 mt-1"><AnimatedNumber value={data.global.total_retours} /></h3>
               <p className="text-[10px] text-red-500 mt-1 font-sans">Retours initiés & confirmés</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600">
               <AlertTriangle className="w-5 h-5" />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Délai moyen dispatch -> livré */}
-        <div className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-[#E8741A] w-full"></div>
           <div className="p-4 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Délai Dispatch → Livré</p>
-              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1">{F(data.global.delai_moy)}h</h3>
+              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.delai_moy} isDecimal suffix="h" /></h3>
               <p className="text-[10px] text-[#E8741A] mt-1 font-sans font-medium">Temps de transit route</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-[#E8741A]">
               <Clock className="w-5 h-5" />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Délai moyen encaissement */}
-        <div className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-amber-500 w-full"></div>
           <div className="p-4 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Délai Encaissement</p>
-              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1">{F(data.global.delai_encaiss_moy)}h</h3>
+              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.delai_encaiss_moy} isDecimal suffix="h" /></h3>
               <p className="text-[10px] text-amber-600 mt-1 font-sans">Livré → Encaissé</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-500">
               <Clock className="w-5 h-5" />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Livreurs actifs */}
-        <div className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-teal-500 w-full"></div>
           <div className="p-4 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Livreurs Actifs</p>
-              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1">{N(data.global.nb_livreurs)}</h3>
+              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.nb_livreurs} /></h3>
               <p className="text-[10px] text-teal-600 mt-1 font-sans">Dans l'export analysé</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
               <Users className="w-5 h-5" />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Non livrés */}
-        <div className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-purple-500 w-full"></div>
           <div className="p-4 flex justify-between items-center">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase">Colis Non Livrés</p>
-              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1">{N(data.global.non_livres)}</h3>
+              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.non_livres} /></h3>
               <p className="text-[10px] text-purple-600 mt-1 font-sans">Différence (Dispatch - Livré)</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
               <Package className="w-5 h-5" />
             </div>
           </div>
-        </div>
-      </div>
+        </motion.div>
+
+        {/* SOC MOYEN RESEAU (9ème carte) */}
+        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300 bg-indigo-50/20 border border-indigo-200/50">
+          <div className="h-1.5 bg-indigo-600 w-full"></div>
+          <div className="p-4 flex justify-between items-center">
+            <div>
+              <p className="text-xs font-semibold text-indigo-700 uppercase flex items-center gap-1">
+                <Activity className="w-3.5 h-3.5" /> SOC Moyen Réseau
+              </p>
+              <h3 className="text-3xl font-black font-mono text-indigo-900 mt-1">
+                <AnimatedNumber value={averageSOC} isDecimal suffix=" / 100" />
+              </h3>
+              <p className="text-[10px] text-slate-500 mt-1 font-sans font-medium">
+                Taux 30% · Rapidité 20% · Encaissement 50%
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-750">
+              <Trophy className="w-5 h-5 text-indigo-600" />
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
 
       {/* 3. Graphiques */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -521,6 +658,22 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
           </div>
         </div>
       </div>
+
+      {/* Toast Notificateur Local */}
+      <AnimatePresence>
+        {localToast && (
+          <motion.div
+            initial={prefersReduced ? { opacity: 1 } : { opacity: 0, y: 40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.95 }}
+            transition={prefersReduced ? { duration: 0 } : { duration: 0.3 }}
+            className="fixed bottom-6 right-6 z-50 p-4 rounded-xl shadow-2xl flex items-center space-x-2 bg-slate-900 text-white min-w-[280px] border border-slate-800"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-xs font-semibold font-sans">{localToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

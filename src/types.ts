@@ -31,6 +31,10 @@ export interface LivreurRecap {
   remun: number;
   surfact: number;
   montant_enc: number;
+  soc: number;             // Score Opérationnel Composite (0–100)
+  soc_taux: number;        // Composante taux (0–30)
+  soc_rapidite: number;    // Composante rapidité (0–20)
+  soc_enc: number;         // Composante encaissement (0–50)
 }
 
 export interface DailyTrend {

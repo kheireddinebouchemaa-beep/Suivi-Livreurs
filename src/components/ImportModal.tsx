@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { motion } from "motion/react";
 import * as XLSX from "xlsx";
 import { AppData } from "../types";
 import { parseEcotrackRawData } from "../parser";
@@ -127,6 +128,7 @@ function parseCSV(text: string): Record<string, any>[] {
 }
 
 export default function ImportModal({ onClose, onImportSuccess }: ImportModalProps) {
+  const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [readingFile, setReadingFile] = useState(false);
@@ -295,8 +297,17 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
   };
 
   return (
-    <div className="fixed inset-0 bg-[#1B3A5C]/30 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="bg-white/85 backdrop-blur-xl rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-white/30 flex flex-col max-h-[90vh]">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 bg-[#1B3A5C]/30 backdrop-blur-md flex items-center justify-center z-50 p-4"
+    >
+      <motion.div
+        initial={prefersReduced ? { opacity: 0 } : { scale: 0.95, opacity: 0, y: 12 }}
+        animate={prefersReduced ? { opacity: 1 } : { scale: 1, opacity: 1, y: 0 }}
+        transition={prefersReduced ? { duration: 0.15 } : { duration: 0.25, ease: "easeOut" }}
+        className="bg-white/85 backdrop-blur-xl rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-white/30 flex flex-col max-h-[90vh]"
+      >
         
         {/* Header */}
         <div className="bg-[#1B3A5C]/90 text-white p-4 flex justify-between items-center backdrop-blur-sm">
@@ -459,7 +470,7 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
           </div>
 
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

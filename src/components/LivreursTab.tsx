@@ -1,13 +1,35 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AppData, LivreurRecap } from "../types";
 import { N, F, P, getPerfCategory, getDelaiCategory, getRetourCategory } from "../utils";
-import { Search, RotateCcw, ChevronDown, ChevronUp, SlidersHorizontal, ArrowUpDown } from "lucide-react";
+import { Search, RotateCcw, ChevronDown, ChevronUp, SlidersHorizontal, ArrowUpDown, Table as TableIcon, FileText } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { exportLivreursExcel } from "../exportExcel";
+import { exportLivreursPdf } from "../exportPdf";
 
 interface LivreursTabProps {
   data: AppData;
 }
 
 export default function LivreursTab({ data }: LivreursTabProps) {
+  // Détection prefers-reduced-motion
+  const [prefersReduced, setPrefersReduced] = useState<boolean>(false);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReduced(mediaQuery.matches);
+    const listener = (e: MediaQueryListEvent) => setPrefersReduced(e.matches);
+    mediaQuery.addEventListener("change", listener);
+    return () => mediaQuery.removeEventListener("change", listener);
+  }, []);
+
+  const [localToast, setLocalToast] = useState<string | null>(null);
+
+  const triggerLocalToast = (msg: string) => {
+    setLocalToast(msg);
+    setTimeout(() => {
+      setLocalToast(null);
+    }, 3000);
+  };
+
   // Filtres
   const [searchText, setSearchText] = useState("");
   const [selectedStation, setSelectedStation] = useState("Tous");
@@ -120,6 +142,14 @@ export default function LivreursTab({ data }: LivreursTabProps) {
     return "text-red-600 font-bold font-mono";
   };
 
+  // Helper de couleur pour SOC (Score Opérationnel Composite)
+  const getSOCStyle = (soc: number) => {
+    if (soc >= 80) return "text-emerald-600 font-extrabold font-mono";
+    if (soc >= 60) return "text-[#1B3A5C] font-bold font-mono";
+    if (soc >= 40) return "text-orange-600 font-semibold font-mono";
+    return "text-red-600 font-bold font-mono";
+  };
+
   // Helper de couleur pour Délais (heures)
   const getDelaiStyle = (val: number) => {
     if (val === 0) return "text-slate-400 font-mono";
@@ -144,8 +174,68 @@ export default function LivreursTab({ data }: LivreursTabProps) {
     }
   };
 
+  // activeFiltersDescription calc
+  const activeFiltersDescription = useMemo(() => {
+    return [
+      searchText && `recherche: "${searchText}"`,
+      selectedStation !== "Tous" && `station: ${selectedStation}`,
+      tauxMin && `taux min: ${tauxMin}%`,
+      tauxMax && `taux max: ${tauxMax}%`,
+      dispMin && `dispatches min: ${dispMin}`,
+      selectedPerf !== "Tous" && `perf: ${selectedPerf}`
+    ].filter(Boolean).join(", ") || "Aucun filtre";
+  }, [searchText, selectedStation, tauxMin, tauxMax, dispMin, selectedPerf]);
+
   return (
-    <div className="glass-panel rounded-xl p-5 space-y-5">
+    <div className="space-y-4">
+      {/* Tab Header with export buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-[#DDE3EE]/40 gap-3">
+        <div>
+          <h2 className="text-sm font-bold tracking-tight uppercase text-[#1B3A5C] flex items-center gap-1.5">
+            👤 Suivi Individuel des Livreurs
+          </h2>
+          <p className="text-[11px] text-[#6B7A99]">Analyse granulaire et filtrage de la flotte de drivers</p>
+        </div>
+        
+        {/* Export Buttons */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          {/* Excel Button */}
+          <motion.button
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={() => {
+              exportLivreursExcel(sortedAndFilteredData, activeFiltersDescription);
+              triggerLocalToast("✅ Export Excel généré");
+            }}
+            disabled={sortedAndFilteredData.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors select-none ${
+              sortedAndFilteredData.length === 0
+                ? "opacity-50 cursor-not-allowed bg-slate-100 border-slate-250 text-slate-400"
+                : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+            }`}
+          >
+            <TableIcon size={13} /> Excel
+          </motion.button>
+
+          {/* PDF Button */}
+          <motion.button
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={() => {
+              exportLivreursPdf(sortedAndFilteredData, activeFiltersDescription);
+              triggerLocalToast("✅ Rapport PDF généré");
+            }}
+            disabled={sortedAndFilteredData.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors select-none ${
+              sortedAndFilteredData.length === 0
+                ? "opacity-50 cursor-not-allowed bg-slate-100 border-slate-250 text-slate-400"
+                : "border-orange-300 bg-orange-50 text-[#E8741A] hover:bg-orange-100 cursor-pointer"
+            }`}
+          >
+            <FileText size={13} /> PDF
+          </motion.button>
+        </div>
+      </div>
+
+      <div className="glass-panel rounded-xl p-5 space-y-5">
       {/* 1. Barre de filtres */}
       <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20 space-y-3">
         <div className="flex items-center space-x-2 pb-1.5 border-b border-[#DDE3EE]/50">
@@ -255,10 +345,10 @@ export default function LivreursTab({ data }: LivreursTabProps) {
         </div>
       </div>
 
-      {/* 2. Tableau scrollable - 21 colonnes */}
+      {/* 2. Tableau scrollable - 22 colonnes */}
       <div className="border border-white/20 rounded-xl overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar max-h-[600px]">
-          <table className="w-full text-left border-collapse min-w-[2200px] text-xs font-sans">
+          <table className="w-full text-left border-collapse min-w-[2350px] text-xs font-sans">
             <thead className="bg-[#1B3A5C]/85 backdrop-blur-md text-white font-semibold sticky top-0 z-10 shadow-xs">
               <tr>
                 <th className="px-3 py-3 w-12 text-center select-none">#</th>
@@ -279,6 +369,9 @@ export default function LivreursTab({ data }: LivreursTabProps) {
                 </th>
                 <th className="px-3 py-3 w-28 cursor-pointer text-center select-none" onClick={() => handleSort("taux_livraison")}>
                   <div className="flex items-center justify-center">Tx Livr. % {renderSortIndicator("taux_livraison")}</div>
+                </th>
+                <th className="px-3 py-3 w-32 cursor-pointer text-center select-none bg-indigo-900/40 border-l border-indigo-200/20" onClick={() => handleSort("soc")}>
+                  <div className="flex items-center justify-center font-bold text-indigo-200">📊 SOC {renderSortIndicator("soc")}</div>
                 </th>
                 <th className="px-3 py-3 w-20 cursor-pointer text-right select-none" onClick={() => handleSort("retours")}>
                   <div className="flex items-center justify-end">Retours {renderSortIndicator("retours")}</div>
@@ -338,8 +431,17 @@ export default function LivreursTab({ data }: LivreursTabProps) {
                 // Volume max pour calculer le % d'occupation de la minibar
                 const percentVolume = l.dispatches > 0 ? (l.livres / l.dispatches) * 100 : 0;
 
+                // Animation désactivée si prefersReduced ou index >= 50 pour performance
+                const animateRow = !prefersReduced && index < 50;
+
                 return (
-                  <tr key={l.id} className={rowBg}>
+                  <motion.tr 
+                    key={l.id} 
+                    className={rowBg}
+                    initial={animateRow ? { opacity: 0, x: -8 } : false}
+                    animate={animateRow ? { opacity: 1, x: 0 } : false}
+                    transition={animateRow ? { delay: index * 0.015, duration: 0.25 } : undefined}
+                  >
                     {/* Index / Rang */}
                     <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-400">
                       {index + 1}
@@ -375,6 +477,22 @@ export default function LivreursTab({ data }: LivreursTabProps) {
                     {/* Taux livraison */}
                     <td className={`px-3 py-2.5 text-center ${getTauxDeliveryStyle(l.taux_livraison)}`}>
                       {P(l.taux_livraison)}
+                    </td>
+                    {/* SOC Composite with tricolore progress indicator and clear breakdown tooltip on hover */}
+                    <td 
+                      className="px-3 py-2 bg-indigo-50/5 border-l border-indigo-200/10 text-center"
+                      title={`Taux Livraison : ${l.soc_taux.toFixed(1)}/30 · Rapidité : ${l.soc_rapidite.toFixed(1)}/20 · Encaissement : ${l.soc_enc.toFixed(1)}/50`}
+                    >
+                      <div className="flex flex-col items-center justify-center space-y-1">
+                        <span className={`font-mono font-bold ${getSOCStyle(l.soc)} text-xs`}>
+                          {l.soc.toFixed(1)}
+                        </span>
+                        <div className="flex h-1 w-16 rounded-full overflow-hidden bg-slate-200 border border-slate-300/30">
+                          <div style={{ width: `${(l.soc_taux / 30) * 100}%` }} className="bg-indigo-600 h-full" />
+                          <div style={{ width: `${(l.soc_rapidite / 20) * 100}%` }} className="bg-amber-500 h-full" />
+                          <div style={{ width: `${(l.soc_enc / 50) * 100}%` }} className="bg-emerald-500 h-full" />
+                        </div>
+                      </div>
                     </td>
                     {/* Retours */}
                     <td className="px-3 py-2.5 text-right font-mono text-red-600">
@@ -432,7 +550,7 @@ export default function LivreursTab({ data }: LivreursTabProps) {
                     <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-700">
                       {N(l.montant_enc)} <span className="text-[9px] font-medium text-slate-400">DA</span>
                     </td>
-                  </tr>
+                  </motion.tr>
                 );
               })}
 
@@ -447,6 +565,23 @@ export default function LivreursTab({ data }: LivreursTabProps) {
           </table>
         </div>
       </div>
+
+      {/* Toast Notificateur Local */}
+      <AnimatePresence>
+        {localToast && (
+          <motion.div
+            initial={prefersReduced ? { opacity: 1 } : { opacity: 0, y: 40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.95 }}
+            transition={prefersReduced ? { duration: 0 } : { duration: 0.3 }}
+            className="fixed bottom-6 right-6 z-50 p-4 rounded-xl shadow-2xl flex items-center space-x-2 bg-slate-900 text-white min-w-[280px] border border-slate-800"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-xs font-semibold font-sans">{localToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
     </div>
   );
 }

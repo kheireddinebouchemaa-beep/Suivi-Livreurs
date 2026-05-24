@@ -1,8 +1,11 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import Chart from "chart.js/auto";
 import { AppData, StationRecap } from "../types";
 import { N, F, P } from "../utils";
-import { Map, Landmark } from "lucide-react";
+import { Map, Landmark, Table as TableIcon, FileText } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { exportStationsExcel } from "../exportExcel";
+import { exportStationsPdf } from "../exportPdf";
 
 interface StationsTabProps {
   data: AppData;
@@ -13,6 +16,15 @@ export default function StationsTab({ data }: StationsTabProps) {
   const rateChartRef = useRef<HTMLCanvasElement | null>(null);
   const volChartInstance = useRef<Chart | null>(null);
   const rateChartInstance = useRef<Chart | null>(null);
+
+  const [localToast, setLocalToast] = useState<string | null>(null);
+
+  const triggerLocalToast = (msg: string) => {
+    setLocalToast(msg);
+    setTimeout(() => {
+      setLocalToast(null);
+    }, 3000);
+  };
 
   // Classer et filtrer les 25 premières stations par volume de dispatches
   const top25Stations = useMemo(() => {
@@ -159,6 +171,53 @@ export default function StationsTab({ data }: StationsTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Tab Header with export buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-[#DDE3EE]/40 gap-3">
+        <div>
+          <h2 className="text-sm font-bold tracking-tight uppercase text-[#1B3A5C] flex items-center gap-1.5">
+            🏢 Performances par Station
+          </h2>
+          <p className="text-[11px] text-[#6B7A99]">Cartographie et scoring analytique des hubs de distribution régionaux</p>
+        </div>
+        
+        {/* Export Buttons */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          {/* Excel Button */}
+          <motion.button
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={() => {
+              exportStationsExcel(data);
+              triggerLocalToast("✅ Export Excel généré");
+            }}
+            disabled={!data || !data.by_station || data.by_station.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors select-none ${
+              (!data || !data.by_station || data.by_station.length === 0)
+                ? "opacity-50 cursor-not-allowed bg-slate-100 border-slate-250 text-slate-400"
+                : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+            }`}
+          >
+            <TableIcon size={13} /> Excel
+          </motion.button>
+
+          {/* PDF Button */}
+          <motion.button
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={() => {
+              exportStationsPdf(data);
+              triggerLocalToast("✅ Rapport PDF généré");
+            }}
+            disabled={!data || !data.by_station || data.by_station.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors select-none ${
+              (!data || !data.by_station || data.by_station.length === 0)
+                ? "opacity-50 cursor-not-allowed bg-slate-100 border-slate-250 text-slate-400"
+                : "border-orange-300 bg-orange-50 text-[#E8741A] hover:bg-orange-100 cursor-pointer"
+            }`}
+          >
+            <FileText size={13} /> PDF
+          </motion.button>
+        </div>
+      </div>
+
       {/* Grille 2 colonnes avec graphiques */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Graphique 1 : Volume par Station */}
@@ -235,6 +294,23 @@ export default function StationsTab({ data }: StationsTabProps) {
           </table>
         </div>
       </div>
+
+      {/* Toast Notificateur Local */}
+      <AnimatePresence>
+        {localToast && (
+          <motion.div
+Key="local-toast-stations"
+            initial={{ opacity: 0, y: 40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ duration: 0.3 }}
+            className="fixed bottom-6 right-6 z-50 p-4 rounded-xl shadow-2xl flex items-center space-x-2 bg-slate-900 text-white min-w-[280px] border border-slate-800"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-xs font-semibold font-sans">{localToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

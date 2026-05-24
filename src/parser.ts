@@ -1,4 +1,5 @@
 import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs } from "./types";
+import { getSOC, getScoreRapidite, getScoreEncaissement } from "./utils";
 
 // Fonction utilitaire pour parser les valeurs numériques
 function parseNumber(val: any): number {
@@ -379,6 +380,11 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const taux_livraison = s.dispatches > 0 ? parseFloat(Math.min(100, (s.livres / s.dispatches) * 100).toFixed(1)) : 0;
     const taux_retour = s.dispatches > 0 ? parseFloat(((s.retours / s.dispatches) * 100).toFixed(1)) : 0;
 
+    const soc = getSOC({ taux_livraison, delai_moy_h, delai_enc_h, dispatches: s.dispatches });
+    const soc_taux = parseFloat((taux_livraison * 0.30).toFixed(1));
+    const soc_rapidite = parseFloat((getScoreRapidite(delai_moy_h) * 0.20).toFixed(1));
+    const soc_enc = parseFloat((getScoreEncaissement(delai_enc_h) * 0.50).toFixed(1));
+
     return {
       id: `LIV-${1000 + idx}`,
       livreur: s.liveur,
@@ -400,7 +406,11 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       communes: s.communesSet.size,
       remun: s.remun,
       surfact: s.surfact,
-      montant_enc: s.montantEnc
+      montant_enc: s.montantEnc,
+      soc,
+      soc_taux,
+      soc_rapidite,
+      soc_enc
     };
   });
 

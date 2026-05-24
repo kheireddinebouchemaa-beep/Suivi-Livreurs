@@ -72,3 +72,38 @@ export function getCompositeScore(l: LivreurRecap): number {
   const finalScore = (0.6 * scoreTaux) + (0.4 * scoreDelai);
   return parseFloat(Math.min(100, Math.max(0, finalScore)).toFixed(1));
 }
+
+export function getScoreRapidite(delai_moy_h: number | null): number {
+  if (delai_moy_h == null || isNaN(delai_moy_h) || delai_moy_h === 0) return 0;
+  if (delai_moy_h <= 12) return 100;
+  if (delai_moy_h <= 24) return 85;
+  if (delai_moy_h <= 48) return 60;
+  if (delai_moy_h <= 72) return 35;
+  return 10;
+}
+
+export function getScoreEncaissement(delai_enc_h: number | null): number {
+  if (delai_enc_h == null || isNaN(delai_enc_h) || delai_enc_h === 0) return 0;
+  if (delai_enc_h <= 24) return 100;
+  if (delai_enc_h <= 48) return 80;
+  if (delai_enc_h <= 72) return 55;
+  if (delai_enc_h <= 96) return 30;
+  return 10;
+}
+
+export function getSOC(l: { taux_livraison: number; delai_moy_h: number | null; delai_enc_h: number | null; dispatches: number }): number {
+  if (l.dispatches === 0) return 0;
+  const composanteTaux = l.taux_livraison * 0.30;
+  const composanteRapidite = getScoreRapidite(l.delai_moy_h) * 0.20;
+  const composanteEnc = getScoreEncaissement(l.delai_enc_h) * 0.50;
+  const soc = composanteTaux + composanteRapidite + composanteEnc;
+  return parseFloat(Math.min(100, Math.max(0, soc)).toFixed(1));
+}
+
+export function getSOCLevel(soc: number): "Excellent" | "Bon" | "Moyen" | "Faible" {
+  if (soc >= 80) return "Excellent";
+  if (soc >= 60) return "Bon";
+  if (soc >= 40) return "Moyen";
+  return "Faible";
+}
+

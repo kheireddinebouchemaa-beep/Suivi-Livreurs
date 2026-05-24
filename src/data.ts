@@ -1,4 +1,5 @@
 import { AppData, LivreurRecap, DailyTrend, StationRecap } from "./types";
+import { getSOC, getScoreRapidite, getScoreEncaissement } from "./utils";
 
 // Quelques constantes réalistes pour IMIR Logistics
 const PREMIUM_ALGERIAN_NAMES = [
@@ -114,6 +115,12 @@ export function generateDemoData(): AppData {
     const panierMoyen = 4500 + Math.floor(seedRandom(seed + 14) * 3000);
     const montant_enc = livres * panierMoyen;
 
+    const t_liv = parseFloat(taux_livraison.toFixed(1));
+    const soc = getSOC({ taux_livraison: t_liv, delai_moy_h, delai_enc_h, dispatches });
+    const soc_taux = parseFloat((t_liv * 0.30).toFixed(1));
+    const soc_rapidite = parseFloat((getScoreRapidite(delai_moy_h) * 0.20).toFixed(1));
+    const soc_enc = parseFloat((getScoreEncaissement(delai_enc_h) * 0.50).toFixed(1));
+
     recap.push({
       id: `LIV-${idx + 1001}`,
       livreur: name,
@@ -121,7 +128,7 @@ export function generateDemoData(): AppData {
       dispatches,
       livres,
       retours,
-      taux_livraison: parseFloat(taux_livraison.toFixed(1)),
+      taux_livraison: t_liv,
       taux_retour: parseFloat(taux_retour.toFixed(1)),
       delai_moy_h,
       delai_fdr_h,
@@ -135,7 +142,11 @@ export function generateDemoData(): AppData {
       communes,
       remun,
       surfact,
-      montant_enc
+      montant_enc,
+      soc,
+      soc_taux,
+      soc_rapidite,
+      soc_enc
     });
 
     // Agrégation par station
