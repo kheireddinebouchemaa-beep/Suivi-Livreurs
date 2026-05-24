@@ -1,0 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "DM Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-navy: #1B3A5C;
+  --color-orange: #E8741A;
+  --color-green: #18A558;
+  --color-red: #D93025;
+  --color-yellow: #F5A623;
+  --color-bg-light: #F0F3F8;
+  --color-card-light: #FFFFFF;
+  --color-border-light: #DDE3EE;
+  --color-muted-light: #6B7A99;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: radial-gradient(circle at 50% 0%, #F5F7FA 0%, #E4ECF5 100%);
+  background-attachment: fixed;
+  color: var(--color-navy);
+}
+
+/* Glassmorphism Classes (Frosted Glass) */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: blur(16px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(130%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: 0 8px 32px 0 rgba(27, 58, 92, 0.05) !important;
+}
+
+.glass-nav {
+  background: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-bottom: 1px solid rgba(27, 58, 92, 0.08) !important;
+}
+
+.glass-header {
+  background: rgba(27, 58, 92, 0.82) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  border: 1px solid rgba(27, 58, 92, 0.12) !important;
+  transition: all 0.2s ease;
+}
+
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.75) !important;
+  border-color: var(--color-orange) !important;
+  box-shadow: 0 0 0 3px rgba(232, 116, 26, 0.15) !important;
+}
+
+.glass-header-panel {
+  background: rgba(27, 58, 92, 0.04) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+.glass-badge-emerald {
+  background: rgba(24, 165, 88, 0.12) !important;
+  border: 1px solid rgba(24, 165, 88, 0.25) !important;
+  color: #11783f !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+.glass-badge-red {
+  background: rgba(217, 48, 37, 0.12) !important;
+  border: 1px solid rgba(217, 48, 37, 0.25) !important;
+  color: #a8201a !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+.glass-badge-orange {
+  background: rgba(232, 116, 26, 0.12) !important;
+  border: 1px solid rgba(232, 116, 26, 0.25) !important;
+  color: #b5530b !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+.glass-badge-navy {
+  background: rgba(27, 58, 92, 0.08) !important;
+  border: 1px solid rgba(27, 58, 92, 0.16) !important;
+  color: #1B3A5C !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* Custom styles for tables scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(27, 58, 92, 0.15);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(27, 58, 92, 0.35);
+}
+
