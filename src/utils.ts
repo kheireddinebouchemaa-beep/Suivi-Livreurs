@@ -100,6 +100,22 @@ export function getSOC(l: { taux_livraison: number; delai_moy_h: number | null; 
   return parseFloat(Math.min(100, Math.max(0, soc)).toFixed(1));
 }
 
+export function getSOCSimule(
+  livreur: LivreurRecap,
+  simTaux: number | null,
+  simDelai: number | null,
+  simEnc: number | null
+): number {
+  if (livreur.dispatches === 0) return 0;
+  const taux = simTaux ?? livreur.taux_livraison;
+  const delai = simDelai ?? livreur.delai_moy_h;
+  const enc = simEnc ?? livreur.delai_enc_h;
+  const soc = taux * 0.30
+    + getScoreRapidite(delai) * 0.20
+    + getScoreEncaissement(enc) * 0.50;
+  return parseFloat(Math.min(100, Math.max(0, soc)).toFixed(1));
+}
+
 export function getSOCLevel(soc: number): "Excellent" | "Bon" | "Moyen" | "Faible" {
   if (soc >= 80) return "Excellent";
   if (soc >= 60) return "Bon";

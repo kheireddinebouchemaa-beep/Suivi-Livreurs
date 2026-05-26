@@ -2,9 +2,8 @@ import { useEffect, useRef, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import Chart from "chart.js/auto";
 import { AppData, LivreurRecap } from "../types";
-import { N, F, P, getPerfCategory, getCompositeScore } from "../utils";
-import { ShieldCheck, Trophy, Sparkles, SlidersHorizontal, Calculator, ListOrdered, ChevronRight, Activity, Table as TableIcon, FileText } from "lucide-react";
-import SOCCalculator from "./SOCCalculator";
+import { N, F, P, getPerfCategory, getCompositeScore, getScoreRapidite, getScoreEncaissement, getSOCSimule } from "../utils";
+import { ShieldCheck, Trophy, Sparkles, SlidersHorizontal, Calculator, ListOrdered, ChevronRight, Activity, Table as TableIcon, FileText, Percent, Clock, Coins, HelpCircle } from "lucide-react";
 import { exportPerformanceExcel } from "../exportExcel";
 import { exportPerformancePdf } from "../exportPdf";
 
@@ -25,10 +24,62 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
     }, 3000);
   };
 
+  // Prefers-reduced-motion check
+  const [prefersReduced, setPrefersReduced] = useState(false);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReduced(mediaQuery.matches);
+    const listener = (e: MediaQueryListEvent) => setPrefersReduced(e.matches);
+    mediaQuery.addEventListener("change", listener);
+    return () => mediaQuery.removeEventListener("change", listener);
+  }, []);
+
+  // 1. Sliders simulation states
+  const [simTaux, setSimTaux] = useState<number | null>(null);
+  const [simDelai, setSimDelai] = useState<number | null>(null);
+  const [simEnc, setSimEnc] = useState<number | null>(null);
+  const isSimulating = simTaux !== null || simDelai !== null || simEnc !== null;
+  function resetSimulation() {
+    setSimTaux(null);
+    setSimDelai(null);
+    setSimEnc(null);
+  }
+
   // Filtrer les livreurs pour les analyses de performances (dispatches >= 20)
   const relevantLivreurs = useMemo(() => {
     return data.recap.filter(l => l.dispatches >= 20);
   }, [data]);
+
+  // recapSimule pour tous les livreurs (pour les statistiques globale / donut)
+  const recapSimuleAll = useMemo(() => {
+    return data.recap.map(l => {
+      if (!isSimulating) {
+        return {
+          ...l,
+          soc_simule: l.soc,
+          soc_delta: 0
+        };
+      }
+      const simScore = getSOCSimule(l, simTaux, simDelai, simEnc);
+      const taux = simTaux ?? l.taux_livraison;
+      const delai = simDelai ?? l.delai_moy_h;
+      const enc = simEnc ?? l.delai_enc_h;
+      
+      const soc_taux_sim = taux * 0.30;
+      const soc_rapidite_sim = getScoreRapidite(delai) * 0.20;
+      const soc_enc_sim = getScoreEncaissement(enc) * 0.50;
+
+      return {
+        ...l,
+        soc: simScore, // override soc reactivement
+        soc_simule: simScore,
+        soc_delta: parseFloat((simScore - l.soc).toFixed(1)),
+        soc_taux: soc_taux_sim,
+        soc_rapidite: soc_rapidite_sim,
+        soc_enc: soc_enc_sim,
+      };
+    });
+  }, [data.recap, simTaux, simDelai, simEnc, isSimulating]);
 
   // Répartition par niveau de performance (tous les livreurs)
   const distPerformance = useMemo(() => {
@@ -62,7 +113,7 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
   // Répartition par niveau de SOC
   const distSOC = useMemo(() => {
     const counts = { Excellent: 0, Bon: 0, Moyen: 0, Faible: 0 };
-    data.recap.forEach(l => {
+    recapSimuleAll.forEach(l => {
       const val = l.soc || 0;
       if (val >= 80) counts.Excellent++;
       else if (val >= 60) counts.Bon++;
@@ -70,19 +121,22 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
       else counts.Faible++;
     });
     return counts;
-  }, [data]);
+  }, [recapSimuleAll]);
 
   // Top 10 meilleurs livreurs selon le SOC décroissant (dispatches >= 20)
   const top10SOC = useMemo(() => {
-    return [...relevantLivreurs]
-      .sort((a, b) => (b.soc || 0) - (a.soc || 0))
+    return recapSimuleAll
+      .filter(l => l.dispatches >= 20)
+      .sort((a, b) => b.soc - a.soc)
       .slice(0, 10);
-  }, [relevantLivreurs]);
+  }, [recapSimuleAll]);
 
   // Tous les livreurs triés par SOC décroissant (dispatches >= 20)
   const listSOCAll = useMemo(() => {
-    return [...relevantLivreurs].sort((a, b) => (b.soc || 0) - (a.soc || 0));
-  }, [relevantLivreurs]);
+    return recapSimuleAll
+      .filter(l => l.dispatches >= 20)
+      .sort((a, b) => b.soc - a.soc);
+  }, [recapSimuleAll]);
 
   useEffect(() => {
     if (chartRef.current) {
@@ -261,8 +315,29 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
             </div>
           </div>
 
+          {/* Bandeau Mode Simulation Orange */}
+          {isSimulating && (
+            <div style={{
+              background: "#FFF4EA", border: "1px solid #F5C89A",
+              borderLeft: "4px solid #E8741A", borderRadius: 8,
+              padding: "10px 14px", marginBottom: 16, marginTop: 16,
+              display: "flex", alignItems: "center", gap: 10
+            }}>
+              <span style={{ fontSize: 13 }}>■</span>
+              <span style={{ fontWeight: 600, color: "#7C3A0A", fontSize: 12 }}>
+                MODE SIMULATION ACTIF — Les tableaux et graphiques reflètent les paramètres simulés.
+              </span>
+              <button onClick={resetSimulation}
+                style={{ marginLeft: "auto", background: "#E8741A", color: "#fff",
+                border: "none", borderRadius: 6, padding: "4px 12px",
+                fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                Réinitialiser
+              </button>
+            </div>
+          )}
+
           {/* Grille de 4 KPI cards adaptées au SOC */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
             {/* Excellent */}
             <div className="glass-panel p-4 rounded-xl text-center relative overflow-hidden shadow-2xs border border-emerald-500/20 bg-emerald-500/5 hover:shadow-xs transition-all duration-300">
               <p className="text-[10px] uppercase font-bold text-emerald-600">🟢 Excellent (≥80 pts)</p>
@@ -287,15 +362,219 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
             {/* Faible */}
             <div className="glass-panel p-4 rounded-xl text-center relative overflow-hidden shadow-2xs border border-red-500/20 bg-red-500/5 hover:shadow-xs transition-all duration-300">
               <p className="text-[10px] uppercase font-bold text-red-650 text-red-600">🔴 Faible ({"<"}40 pts)</p>
-              <p className="text-3xl font-black font-mono text-red-650 mt-1">{distSOC.Faible}</p>
+              <p className="text-3xl font-black font-mono text-[#D93025] mt-1">{distSOC.Faible}</p>
               <span className="text-[9px] text-slate-500">Alerte de conformité</span>
             </div>
           </div>
 
           {/* Grille 2 colonnes: Simulateur interactif à côté de la répartition de l'indice */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Simulateur interactif */}
-            <SOCCalculator />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            {/* Simulateur interactif parent-bound */}
+            <div id="soc-calculator" className="glass-panel p-5 rounded-xl border border-indigo-100 bg-white/20 shadow-xs relative overflow-hidden">
+              <div className="mb-4 pb-2 border-b border-[#F0F3F8] flex items-center justify-between">
+                <h4 className="font-bold text-[#1B3A5C] text-sm font-sans flex items-center">
+                  <Calculator className="w-4.5 h-4.5 mr-2 text-indigo-850 text-indigo-750" />
+                  🧮 Simulateur de Performance Interactive (SOC)
+                </h4>
+                <span className="text-[10px] text-slate-500 font-mono flex items-center">
+                  Outil d'aide à la décision
+                </span>
+              </div>
+
+              <p className="text-[11px] text-slate-600 mb-5 leading-normal">
+                Ajustez les sliders ci-dessous pour simuler l'impact opérationnel direct de chaque composante sur le 
+                <strong> Score Opérationnel Composite (SOC)</strong> d'un collaborateur livreur.
+              </p>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Sliders d'entrée */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Taux livraison */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700 flex items-center gap-1">
+                        <Percent className="w-3.5 h-3.5 text-indigo-750" />
+                        Taux de Livraison (30%)
+                      </span>
+                      <span className="font-mono font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                        {simTaux ?? 80}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={simTaux ?? 80}
+                      onChange={(e) => setSimTaux(parseInt(e.target.value, 10))}
+                      className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#1B3A5C]"
+                    />
+                    <div className="flex justify-between text-[9px] text-slate-400 font-medium">
+                      <span>Critique (0%)</span>
+                      <span>Standard (75%)</span>
+                      <span>Cible (100%)</span>
+                    </div>
+                  </div>
+
+                  {/* Délai livraison */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                        Délai Moyen de Livraison (20%)
+                      </span>
+                      <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                        {simDelai ?? 36}h
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="120"
+                      value={simDelai ?? 36}
+                      onChange={(e) => setSimDelai(parseInt(e.target.value, 10))}
+                      className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-[#E8741A]"
+                    />
+                    <div className="flex justify-between text-[9px] text-slate-400 font-medium">
+                      <span>Excellent (≤12h)</span>
+                      <span>SLA Route (24h)</span>
+                      <span>Lent (72h+)</span>
+                    </div>
+                  </div>
+
+                  {/* Délai encaissement */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700 flex items-center gap-1">
+                        <Coins className="w-3.5 h-3.5 text-emerald-600" />
+                        Délai d'Encaissement COD (50%)
+                      </span>
+                      <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                        {simEnc ?? 60}h
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="120"
+                      value={simEnc ?? 60}
+                      onChange={(e) => setSimEnc(parseInt(e.target.value, 10))}
+                      className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                    />
+                    <div className="flex justify-between text-[9px] text-slate-400 font-medium">
+                      <span>Excellent (≤24h)</span>
+                      <span>Acceptable (72h)</span>
+                      <span>Critique (96h+)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panneau de résultats */}
+                {(() => {
+                  const sTaux = simTaux ?? 80;
+                  const sDelai = simDelai ?? 36;
+                  const sEnc = simEnc ?? 60;
+
+                  const pTaux = parseFloat((sTaux * 0.30).toFixed(1));
+                  const rRapidite = getScoreRapidite(sDelai);
+                  const pRapidite = parseFloat((rRapidite * 0.20).toFixed(1));
+                  const rEnc = getScoreEncaissement(sEnc);
+                  const pEnc = parseFloat((rEnc * 0.50).toFixed(1));
+
+                  const totExact = pTaux + pRapidite + pEnc;
+                  const simulatedSOC = parseFloat(Math.min(100, Math.max(0, totExact)).toFixed(1));
+
+                  let sLevelStr = "Faible";
+                  let sBadgeColor = "bg-red-500/15 text-red-500 border-red-500/30";
+                  if (simulatedSOC >= 80) {
+                    sLevelStr = "🟢 Excellent";
+                    sBadgeColor = "bg-emerald-500/15 text-emerald-600 border-emerald-555/30";
+                  } else if (simulatedSOC >= 60) {
+                    sLevelStr = "🔵 Bon";
+                    sBadgeColor = "bg-indigo-500/15 text-indigo-700 border-indigo-500/30";
+                  } else if (simulatedSOC >= 40) {
+                    sLevelStr = "🟠 Moyen";
+                    sBadgeColor = "bg-orange-500/15 text-orange-600 border-orange-500/30";
+                  }
+
+                  return (
+                    <div className="lg:col-span-5 bg-white/40 border border-white/50 rounded-xl p-4 flex flex-col justify-between shadow-3xs backdrop-blur-md">
+                      <div className="text-center pb-3">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Score Composite Simulé</p>
+                        
+                        <motion.div 
+                          animate={prefersReduced ? {} : {
+                            scale: [1, 1.02, 1],
+                            transition: { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                          }}
+                          className="my-3 inline-block"
+                        >
+                          <div className="text-4xl font-black font-mono text-[#1B3A5C] tracking-tight">
+                            {simulatedSOC} <span className="text-xs text-slate-400">/ 100</span>
+                          </div>
+                        </motion.div>
+
+                        <div className={`text-xs font-black uppercase px-3 py-1 rounded-full border inline-block ${sBadgeColor}`}>
+                          Indice : {sLevelStr}
+                        </div>
+                      </div>
+
+                      {/* Barre de répartition de score */}
+                      <div className="space-y-2.5 pt-2 border-t border-slate-200/50">
+                        <h5 className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Répartition des points :</h5>
+                        <div className="flex h-3.5 w-full rounded-md overflow-hidden bg-slate-150 border border-white/20">
+                          <div 
+                            style={{ width: `${(pTaux / simulatedSOC) * 100 || 0}%` }} 
+                            className="bg-indigo-600 h-full"
+                            title={`Taux: ${pTaux} points`}
+                          />
+                          <div 
+                            style={{ width: `${(pRapidite / simulatedSOC) * 100 || 0}%` }} 
+                            className="bg-amber-500 h-full"
+                            title={`Rapidité: ${pRapidite} points`}
+                          />
+                          <div 
+                            style={{ width: `${(pEnc / simulatedSOC) * 100 || 0}%` }} 
+                            className="bg-emerald-500 h-full"
+                            title={`Encaissement: ${pEnc} points`}
+                          />
+                        </div>
+
+                        <div className="space-y-1 text-[11px] text-slate-700 font-medium font-sans">
+                          <div className="flex justify-between items-center">
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <span className="w-2.5 h-2.5 bg-indigo-600 rounded-xs inline-block" />
+                              Composante Taux (30%):
+                            </span>
+                            <span className="font-mono text-indigo-900 font-bold">{pTaux} pts</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <span className="w-2.5 h-2.5 bg-amber-500 rounded-xs inline-block" />
+                              Composante Rapidité (20%):
+                            </span>
+                            <span className="font-mono text-amber-800 font-bold">{pRapidite} pts</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-xs inline-block" />
+                              Composante Encaissement (50%):
+                            </span>
+                            <span className="font-mono text-emerald-700 font-bold">{pEnc} pts</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="mt-4 p-2.5 bg-white/40 rounded-lg border border-white/30 text-[9.5px] text-slate-500 flex items-start gap-1.5">
+                <HelpCircle className="w-3.5 h-3.5 text-indigo-750 flex-shrink-0 mt-0.5" />
+                <span className="leading-normal">
+                  <strong>Note pédagogique :</strong> Le délai d'encaissement (COD) pèse pour <strong>50%</strong> de la note globale. Réduire ce délai de 72h à 24h améliore immédiatement le score de plus de 22 points ! C'est le flux financier d'IMIR qu'il faut accélérer.
+                </span>
+              </div>
+            </div>
 
             {/* Graphique de répartition du réseau par SOC */}
             <div className="glass-panel p-5 rounded-xl flex flex-col justify-between border border-indigo-100 bg-white/20">
@@ -344,6 +623,7 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
                     <th className="px-3 py-2 text-center w-32">Délivrabilité (30%)</th>
                     <th className="px-3 py-2 text-center w-32">Vitesse (20%)</th>
                     <th className="px-3 py-2 text-center w-32">Encaissement (50%)</th>
+                    {isSimulating && <th className="px-3 py-2 text-center w-28">Variation</th>}
                     <th className="px-4 py-2 text-center w-40">Score SOC Final</th>
                   </tr>
                 </thead>
@@ -356,6 +636,21 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
                       <td className="px-3 py-2.5 text-center font-mono text-indigo-700">{l.soc_taux.toFixed(1)}/30</td>
                       <td className="px-3 py-2.5 text-center font-mono text-amber-600">{l.soc_rapidite.toFixed(1)}/20</td>
                       <td className="px-3 py-2.5 text-center font-mono text-emerald-600">{l.soc_enc.toFixed(1)}/50</td>
+                      {isSimulating && (
+                        <td className="px-3 py-2 text-center font-mono">
+                          {l.soc_delta !== undefined && l.soc_delta > 0 ? (
+                            <span style={{ color: "#18A558", fontWeight: 700 }}>
+                              ↑ +{l.soc_delta} pts
+                            </span>
+                          ) : l.soc_delta !== undefined && l.soc_delta < 0 ? (
+                            <span style={{ color: "#D93025", fontWeight: 700 }}>
+                              ↓ {l.soc_delta} pts
+                            </span>
+                          ) : (
+                            <span style={{ color: "#6B7A99" }}>= 0</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-2.5 text-center">
                         <span className={`px-2.5 py-1 rounded-full text-xs font-black font-mono bg-indigo-50/50 ${getSOCStyle(l.soc)}`}>
                           {l.soc.toFixed(1)}/100
@@ -391,6 +686,7 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
                     <th className="px-3 py-2.5 text-right w-24">Délai Disp.</th>
                     <th className="px-3 py-2.5 text-right w-24 text-emerald-600">Délai Enc.</th>
                     <th className="px-4 py-2.5 min-w-[200px] text-center">Sous-Composantes SOC (T / V / E)</th>
+                    {isSimulating && <th className="px-3 py-2.5 text-center w-28">Variation</th>}
                     <th className="px-4 py-2.5 text-center w-40 font-bold">Score SOC</th>
                   </tr>
                 </thead>
@@ -421,6 +717,22 @@ export default function PerformanceTab({ data }: PerformanceTabProps) {
                           </div>
                         </div>
                       </td>
+
+                      {isSimulating && (
+                        <td className="px-3 py-2 text-center font-mono">
+                          {l.soc_delta !== undefined && l.soc_delta > 0 ? (
+                            <span style={{ color: "#18A558", fontWeight: 700 }}>
+                              ↑ +{l.soc_delta} pts
+                            </span>
+                          ) : l.soc_delta !== undefined && l.soc_delta < 0 ? (
+                            <span style={{ color: "#D93025", fontWeight: 700 }}>
+                              ↓ {l.soc_delta} pts
+                            </span>
+                          ) : (
+                            <span style={{ color: "#6B7A99" }}>= 0</span>
+                          )}
+                        </td>
+                      )}
 
                       <td className="px-4 py-2 text-center">
                         <span className={`font-mono font-bold text-xs ${getSOCStyle(l.soc)}`}>

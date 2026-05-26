@@ -35,6 +35,8 @@ export interface LivreurRecap {
   soc_taux: number;        // Composante taux (0–30)
   soc_rapidite: number;    // Composante rapidité (0–20)
   soc_enc: number;         // Composante encaissement (0–50)
+  soc_simule?: number;     // Optionnel: score simulé
+  soc_delta?: number;      // Optionnel: différence score simulé - score réel
 }
 
 export interface DailyTrend {
