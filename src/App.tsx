@@ -11,11 +11,16 @@ import ImportModal from "./components/ImportModal";
 import PdfModal from "./components/PdfModal";
 import LoginScreen from "./components/LoginScreen";
 import AlertsPanel from "./components/AlertsPanel";
+import SetupScreen from "./components/SetupScreen";
 import { BarChart3, Users, AlertTriangle, Clock, Trophy, Map, Upload, FileText, CheckCircle2, Info, RefreshCw, LogOut, Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { getToken, clearToken, getLatestSnapshot, saveSnapshot, getThresholds, Threshold } from "./lib/api";
 
 export default function App() {
+  if (window.location.pathname === "/setup") {
+    return <SetupScreen />;
+  }
+
   // ── Authentification Direction ──────────────────────────
   const [isAuthed, setIsAuthed] = useState<boolean>(!!getToken());
   const [bootLoading, setBootLoading] = useState<boolean>(true);
