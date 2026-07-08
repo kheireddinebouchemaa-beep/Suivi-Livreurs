@@ -140,4 +140,15 @@ app.put("/api/thresholds/:key", requireAuth, async (req, res) => {
   const { value } = req.body;
   if (typeof value !== "number") return res.status(400).json({ error: "value doit être un nombre." });
 
-  const {
+  const { data, error } = await supabase
+    .from("alert_thresholds")
+    .update({ value, updated_at: new Date().toISOString() })
+    .eq("key", req.params.key)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+export default app;
