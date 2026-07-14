@@ -191,7 +191,14 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
           let jsonRows: any[] = [];
           if (isCsv) {
             setSheetName("Export CSV");
-            const text = data as string;
+            const buffer = data as ArrayBuffer;
+            let text = new TextDecoder("utf-8").decode(buffer);
+            // Détection de mojibake (encodage mal interprété, ex: fichiers issus d'un script de fusion Python/pandas non-UTF-8)
+            const sample = text.slice(0, 5000);
+            const looksLikeMojibake = /�/.test(sample) || /Ã./.test(sample) || /â€/.test(sample);
+            if (looksLikeMojibake) {
+              text = new TextDecoder("windows-1252").decode(buffer);
+            }
             jsonRows = parseCSV(text);
           } else {
             const workbook = XLSX.read(data, { type: "array" });
@@ -239,11 +246,7 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
         resetState();
       };
 
-      if (isCsv) {
-        reader.readAsText(selectedFile, "UTF-8");
-      } else {
-        reader.readAsArrayBuffer(selectedFile);
-      }
+      reader.readAsArrayBuffer(selectedFile);
     } catch (err) {
       alert("Erreur générale de lecture.");
       resetState();
