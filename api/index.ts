@@ -3,7 +3,8 @@ import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
-app.use(cors());
+// Le frontend appelle l'API en même origine (rewrite Vercel /api/*) : pas besoin d'ouvrir le CORS à d'autres sites.
+app.use(cors({ origin: false }));
 app.use(express.json({ limit: "15mb" })); // les snapshots KPI peuvent être volumineux
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;

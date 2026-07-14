@@ -1,6 +1,0 @@
-{
-  "name": "IMIR Logistics - KPI Livreurs",
-  "description": "Application d'analyse de performance et de suivi des KPI des livreurs à partir d'exports Ecotrack pour IMIR Logistics (Algérie).",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

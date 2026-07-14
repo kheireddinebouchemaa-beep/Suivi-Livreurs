@@ -1,20 +1,19 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Suivi-Livreurs — IMIR Logistics
 
-# Run and deploy your AI Studio app
+Dashboard KPI pour les livreurs du réseau IMIR Logistics (76 stations, 55 wilayas, exports ECOTRACK v3.11).
 
-This contains everything you need to run your app locally.
+Stack : React 19 + TypeScript + Vite, backend Express (serverless sur Vercel), Supabase (Postgres).
 
-View your app in AI Studio: https://ai.studio/apps/c9074043-0aa4-429b-b7b8-f8ba60ab8356
+## Lancer en local
 
-## Run Locally
+**Prérequis :** Node.js
 
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
+1. Installer les dépendances :
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Copier `.env.example` vers `.env.local` et renseigner `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`
+3. Lancer l'app :
    `npm run dev`
+
+## Build de production
+
+`npm run build`
