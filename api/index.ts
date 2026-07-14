@@ -1,8 +1,6 @@
 import express from "express";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 
 const app = express();
 app.use(cors());
@@ -10,68 +8,11 @@ app.use(express.json({ limit: "15mb" })); // les snapshots KPI peuvent être vol
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
-const JWT_SECRET = process.env.JWT_SECRET!;
-const SETUP_SECRET = process.env.SETUP_SECRET!; // clé unique pour initialiser/réinitialiser le mot de passe Direction
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// ── Middleware d'authentification ──────────────────────────
-function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Non authentifié." });
-  }
-  const token = header.slice(7);
-  try {
-    jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: "Session invalide ou expirée." });
-  }
-}
-
-// ── Setup initial du mot de passe Direction ────────────────
-// À appeler UNE FOIS après déploiement (Postman/curl), avec SETUP_SECRET.
-app.post("/api/auth/setup", async (req, res) => {
-  const { setup_secret, password } = req.body;
-  if (setup_secret !== SETUP_SECRET) {
-    return res.status(403).json({ error: "Clé de configuration invalide." });
-  }
-  if (!password || password.length < 8) {
-    return res.status(400).json({ error: "Le mot de passe doit faire au moins 8 caractères." });
-  }
-  const hash = await bcrypt.hash(password, 12);
-  const { error } = await supabase
-    .from("direction_access")
-    .upsert({ id: 1, password_hash: hash });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true, message: "Mot de passe Direction configuré." });
-});
-
-// ── Login ───────────────────────────────────────────────────
-app.post("/api/auth/login", async (req, res) => {
-  const { password } = req.body;
-  if (!password) return res.status(400).json({ error: "Mot de passe requis." });
-
-  const { data, error } = await supabase
-    .from("direction_access")
-    .select("password_hash")
-    .eq("id", 1)
-    .single();
-
-  if (error || !data) {
-    return res.status(500).json({ error: "Accès Direction non configuré. Contacter l'administrateur." });
-  }
-
-  const valid = await bcrypt.compare(password, data.password_hash);
-  if (!valid) return res.status(401).json({ error: "Mot de passe incorrect." });
-
-  const token = jwt.sign({ role: "direction" }, JWT_SECRET, { expiresIn: "12h" });
-  res.json({ token });
-});
-
 // ── Sauvegarder un nouveau snapshot (après import Excel ou sync API) ──
-app.post("/api/snapshots", requireAuth, async (req, res) => {
+app.post("/api/snapshots", async (req, res) => {
   const { file_name, source, period_label, data } = req.body;
   if (!file_name || !data) {
     return res.status(400).json({ error: "file_name et data sont requis." });
@@ -92,7 +33,7 @@ app.post("/api/snapshots", requireAuth, async (req, res) => {
 });
 
 // ── Liste des snapshots (historique, sans le payload complet) ──
-app.get("/api/snapshots", requireAuth, async (_req, res) => {
+app.get("/api/snapshots", async (_req, res) => {
   const { data, error } = await supabase
     .from("kpi_snapshots")
     .select("id, created_at, file_name, source, period_label")
@@ -104,7 +45,7 @@ app.get("/api/snapshots", requireAuth, async (_req, res) => {
 });
 
 // ── Dernier snapshot complet (chargé au démarrage du dashboard) ──
-app.get("/api/snapshots/latest", requireAuth, async (_req, res) => {
+app.get("/api/snapshots/latest", async (_req, res) => {
   const { data, error } = await supabase
     .from("kpi_snapshots")
     .select("*")
@@ -118,7 +59,7 @@ app.get("/api/snapshots/latest", requireAuth, async (_req, res) => {
 });
 
 // ── Snapshot précis par ID (pour comparer des périodes) ──
-app.get("/api/snapshots/:id", requireAuth, async (req, res) => {
+app.get("/api/snapshots/:id", async (req, res) => {
   const { data, error } = await supabase
     .from("kpi_snapshots")
     .select("*")
@@ -130,13 +71,13 @@ app.get("/api/snapshots/:id", requireAuth, async (req, res) => {
 });
 
 // ── Seuils d'alerte ─────────────────────────────────────────
-app.get("/api/thresholds", requireAuth, async (_req, res) => {
+app.get("/api/thresholds", async (_req, res) => {
   const { data, error } = await supabase.from("alert_thresholds").select("*");
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-app.put("/api/thresholds/:key", requireAuth, async (req, res) => {
+app.put("/api/thresholds/:key", async (req, res) => {
   const { value } = req.body;
   if (typeof value !== "number") return res.status(400).json({ error: "value doit être un nombre." });
 

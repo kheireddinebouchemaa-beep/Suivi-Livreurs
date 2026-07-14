@@ -9,20 +9,12 @@ import PerformanceTab from "./components/PerformanceTab";
 import StationsTab from "./components/StationsTab";
 import ImportModal from "./components/ImportModal";
 import PdfModal from "./components/PdfModal";
-import LoginScreen from "./components/LoginScreen";
 import AlertsPanel from "./components/AlertsPanel";
-import SetupScreen from "./components/SetupScreen";
-import { BarChart3, Users, AlertTriangle, Clock, Trophy, Map, Upload, FileText, CheckCircle2, Info, RefreshCw, LogOut, Loader2 } from "lucide-react";
+import { BarChart3, Users, AlertTriangle, Clock, Trophy, Map, Upload, FileText, CheckCircle2, Info, RefreshCw, Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { getToken, clearToken, getLatestSnapshot, saveSnapshot, getThresholds, Threshold } from "./lib/api";
+import { getLatestSnapshot, saveSnapshot, getThresholds, Threshold } from "./lib/api";
 
 export default function App() {
-  if (window.location.pathname === "/setup") {
-    return <SetupScreen />;
-  }
-
-  // ── Authentification Direction ──────────────────────────
-  const [isAuthed, setIsAuthed] = useState<boolean>(!!getToken());
   const [bootLoading, setBootLoading] = useState<boolean>(true);
 
   // Chargement des données initiales de démonstration
@@ -51,12 +43,8 @@ export default function App() {
     setTimeout(() => setToast({ message: "", type: null }), 4500);
   }, []);
 
-  // ── Charger le dernier snapshot Supabase + les seuils, une fois authentifié ──
+  // ── Charger le dernier snapshot Supabase + les seuils au démarrage ──
   useEffect(() => {
-    if (!isAuthed) {
-      setBootLoading(false);
-      return;
-    }
     (async () => {
       setBootLoading(true);
       try {
@@ -64,12 +52,7 @@ export default function App() {
         setData(snapshot.data);
         setFileName(snapshot.file_name);
         setIsDemo(false);
-      } catch (err: any) {
-        if (err.message === "SESSION_EXPIRED") {
-          setIsAuthed(false);
-          setBootLoading(false);
-          return;
-        }
+      } catch {
         // Pas de snapshot en base : on garde les données de démo
       }
       try {
@@ -80,7 +63,7 @@ export default function App() {
       }
       setBootLoading(false);
     })();
-  }, [isAuthed]);
+  }, []);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -126,16 +109,6 @@ export default function App() {
       triggerToast("✅ Données de démonstration restaurées.", "success");
     }
   };
-
-  const handleLogout = () => {
-    clearToken();
-    setIsAuthed(false);
-  };
-
-  // ── Écran de connexion ──────────────────────────────────
-  if (!isAuthed) {
-    return <LoginScreen onSuccess={() => setIsAuthed(true)} />;
-  }
 
   if (bootLoading) {
     return (
@@ -211,15 +184,6 @@ export default function App() {
               <FileText className="w-3.5 h-3.5" />
               <span>PDF rapport</span>
             </button>
-
-            {/* Déconnexion */}
-            <button
-              onClick={handleLogout}
-              title="Déconnexion"
-              className="p-1.5 bg-slate-800/80 border border-slate-700/50 rounded-md hover:bg-slate-700 cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
           </div>
 
           {/* Mobile Header Buttons */}
@@ -229,9 +193,6 @@ export default function App() {
             </button>
             <button onClick={() => setShowPdfModal(true)} className="p-1.5 bg-[#E8741A] rounded-md">
               <FileText className="w-4 h-4" />
-            </button>
-            <button onClick={handleLogout} className="p-1.5 bg-slate-800 rounded-md">
-              <LogOut className="w-4 h-4" />
             </button>
           </div>
 
