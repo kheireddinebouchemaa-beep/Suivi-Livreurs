@@ -52,6 +52,7 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
   const barChartRef = useRef<HTMLCanvasElement | null>(null);
   const lineChartInstance = useRef<Chart | null>(null);
   const barChartInstance = useRef<Chart | null>(null);
+  const [showSkippedDetail, setShowSkippedDetail] = useState(false);
 
   // 1. Calculer la distribution du taux de livraison
   // Tranches : <50%, 50-60%, 60-70%, 70-80%, 80-90%, 90-95%, >95%
@@ -371,18 +372,59 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
 
       {/* Traçabilité de l'import : lignes du fichier vs lignes comptabilisées */}
       {(data.global.lignes_ignorees_sans_livreur > 0 || data.global.lignes_ignorees_sans_dispatch > 0) && (
-        <div className="flex items-start gap-2 bg-slate-100/70 border border-slate-200 text-slate-600 rounded-xl px-4 py-2.5 text-[11px] leading-relaxed">
-          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-          <span>
-            <strong>{N(data.global.lignes_fichier)}</strong> lignes lues dans le fichier importé, dont{" "}
-            <strong>{N(data.global.total_dispatches)}</strong> comptabilisées comme "Dispatchés" (colis avec une date "Dispatché au livreur le").{" "}
-            {data.global.lignes_ignorees_sans_livreur > 0 && (
-              <>{N(data.global.lignes_ignorees_sans_livreur)} lignes ignorées sans livreur assigné. </>
-            )}
-            {data.global.lignes_ignorees_sans_dispatch > 0 && (
-              <>{N(data.global.lignes_ignorees_sans_dispatch)} lignes ignorées car jamais dispatchées (colis pas encore pris en charge).</>
-            )}
-          </span>
+        <div className="bg-slate-100/70 border border-slate-200 text-slate-600 rounded-xl px-4 py-2.5 text-[11px] leading-relaxed">
+          <button
+            onClick={() => setShowSkippedDetail(v => !v)}
+            className="w-full flex items-start gap-2 text-left cursor-pointer"
+          >
+            <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            <span className="flex-1">
+              <strong>{N(data.global.lignes_fichier)}</strong> lignes lues dans le fichier importé, dont{" "}
+              <strong>{N(data.global.total_dispatches)}</strong> comptabilisées comme "Dispatchés" (colis avec une date "Dispatché au livreur le").{" "}
+              {data.global.lignes_ignorees_sans_livreur > 0 && (
+                <>{N(data.global.lignes_ignorees_sans_livreur)} lignes ignorées sans livreur assigné. </>
+              )}
+              {data.global.lignes_ignorees_sans_dispatch > 0 && (
+                <>{N(data.global.lignes_ignorees_sans_dispatch)} lignes ignorées car jamais dispatchées (colis pas encore pris en charge). </>
+              )}
+              <span className="underline font-semibold text-[#1B3A5C]">{showSkippedDetail ? "Masquer le détail" : "Voir le détail par statut"}</span>
+            </span>
+          </button>
+
+          {showSkippedDetail && (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {data.global.statuts_sans_livreur.length > 0 && (
+                <div className="bg-white/60 border border-slate-200 rounded-lg p-3">
+                  <p className="font-bold text-[#1B3A5C] text-[10px] uppercase tracking-wide mb-2">
+                    Sans livreur assigné ({N(data.global.lignes_ignorees_sans_livreur)}) — par statut
+                  </p>
+                  <ul className="space-y-1">
+                    {data.global.statuts_sans_livreur.map(s => (
+                      <li key={s.statut} className="flex justify-between">
+                        <span className="truncate pr-2">{s.statut}</span>
+                        <span className="font-mono font-bold text-[#1B3A5C]">{N(s.count)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {data.global.statuts_sans_dispatch.length > 0 && (
+                <div className="bg-white/60 border border-slate-200 rounded-lg p-3">
+                  <p className="font-bold text-[#1B3A5C] text-[10px] uppercase tracking-wide mb-2">
+                    Jamais dispatchées ({N(data.global.lignes_ignorees_sans_dispatch)}) — par statut
+                  </p>
+                  <ul className="space-y-1">
+                    {data.global.statuts_sans_dispatch.map(s => (
+                      <li key={s.statut} className="flex justify-between">
+                        <span className="truncate pr-2">{s.statut}</span>
+                        <span className="font-mono font-bold text-[#1B3A5C]">{N(s.count)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

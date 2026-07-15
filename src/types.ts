@@ -1,3 +1,8 @@
+export interface StatutBreakdown {
+  statut: string;
+  count: number;
+}
+
 export interface GlobalKPIs {
   total_dispatches: number;
   total_livres: number;
@@ -10,6 +15,8 @@ export interface GlobalKPIs {
   lignes_fichier: number;           // nb total de lignes lues dans le fichier importé
   lignes_ignorees_sans_livreur: number;   // lignes sans livreur assigné (non comptabilisées)
   lignes_ignorees_sans_dispatch: number;  // lignes avec livreur mais jamais dispatchées (non comptabilisées)
+  statuts_sans_livreur: StatutBreakdown[];   // répartition par "Statut" des lignes sans livreur
+  statuts_sans_dispatch: StatutBreakdown[];  // répartition par "Statut" des lignes jamais dispatchées
 }
 
 export interface LivreurRecap {

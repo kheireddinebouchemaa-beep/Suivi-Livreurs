@@ -184,19 +184,25 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   let skippedNoLivreur = 0;
   let skippedNoDispatch = 0;
+  const skippedNoLivreurByStatut: Record<string, number> = {};
+  const skippedNoDispatchByStatut: Record<string, number> = {};
 
   for (let i = 0; i < totalLines; i++) {
     const row = rawRows[i];
-    
+
     if (i % stepIncrement === 0) {
       const prog = 30 + Math.floor((i / totalLines) * 20);
       onProgress?.(prog);
     }
 
+    // Statut brut du colis, lu en premier pour pouvoir qualifier les lignes ignorées ci-dessous
+    const statutBrut = String(findKey(row, keysMapping.statut) || "").trim() || "Statut non renseigné";
+
     // Récupérer et normaliser les données du colis
     const liveurName = String(findKey(row, keysMapping.livreur) || "/").trim();
     if (!liveurName || liveurName === "/" || liveurName === "" || liveurName === "null") {
       skippedNoLivreur++;
+      skippedNoLivreurByStatut[statutBrut] = (skippedNoLivreurByStatut[statutBrut] || 0) + 1;
       continue; // Ignorer les colis sans livreur
     }
 
@@ -211,8 +217,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const encaisseDate = parseEcotrackDate(findKey(row, keysMapping.encaisseLe));
     const retourDate = parseEcotrackDate(findKey(row, keysMapping.retourDemandeLe));
 
-    // Statut & Prestation & Type
-    const statut = String(findKey(row, keysMapping.statut) || "").toLowerCase().trim();
+    // Prestation & Type
     const prestation = String(findKey(row, keysMapping.prestation) || "").trim();
     const typeColis = String(findKey(row, keysMapping.type) || "").trim();
     const wilayaStr = String(findKey(row, keysMapping.wilaya) || "").trim();
@@ -232,6 +237,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     // Donc nous ne comptons que si dispatché est actif !
     if (!isDispatched) {
       skippedNoDispatch++;
+      skippedNoDispatchByStatut[statutBrut] = (skippedNoDispatchByStatut[statutBrut] || 0) + 1;
       continue;
     }
 
@@ -495,6 +501,11 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   const totalDEnc = recap.reduce((s, x) => s + (x.delai_enc_h * x.livres), 0);
   const delai_encaiss_moy = total_livres > 0 ? parseFloat((totalDEnc / total_livres).toFixed(1)) : 0;
 
+  const toSortedBreakdown = (byStatut: Record<string, number>) =>
+    Object.entries(byStatut)
+      .map(([statut, count]) => ({ statut, count }))
+      .sort((a, b) => b.count - a.count);
+
   const global: GlobalKPIs = {
     total_dispatches,
     total_livres,
@@ -506,7 +517,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     non_livres,
     lignes_fichier: totalLines,
     lignes_ignorees_sans_livreur: skippedNoLivreur,
-    lignes_ignorees_sans_dispatch: skippedNoDispatch
+    lignes_ignorees_sans_dispatch: skippedNoDispatch,
+    statuts_sans_livreur: toSortedBreakdown(skippedNoLivreurByStatut),
+    statuts_sans_dispatch: toSortedBreakdown(skippedNoDispatchByStatut)
   };
 
   onProgress?.(100);
