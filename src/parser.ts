@@ -144,7 +144,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     transfereAdminLe: ["Transféré vers l'admin le"],
     recuAdminLe: ["Reçu par l'admin le"],
     transferePartenaireLe: ["Transféré au partenaire le"],
-    colisFacture: ["Colis facturé"],
+    colisFacture: ["Colis facturé", "Colis facture"],
     
     statut: ["Statut", "statut"],
     smsEnvoyes: ["SMS envoyés", "Sms envoyes", "SMS envoyé"]
@@ -163,6 +163,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     delaisDisp: number[];
     delaisFdr: number[];
     delaisEnc: number[];
+    delaisRestitution: number[];
+    anomalies: number;
+    smsCount: number;
     expedieDates: Set<string>;
     domicile: number;
     stopDesk: number;
@@ -176,13 +179,24 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   const dailyTrendMap: Record<string, { dispatches: number; livres: number; retoursBefore: number; livesEffective: number; retoursEffective: number }> = {};
   const stationsMap: Record<string, { livreurs: Set<string>; dispatches: number; livres: number; retours: number; delais: number[] }> = {};
+  // Nb de colis par jour et par station, pour l'écart-type de charge journalière (équilibrage)
+  const stationDailyMap: Record<string, Record<string, number>> = {};
 
   // Détail expéditeur/zone par livreur (Volet A) + agrégats réseau (Volets B/C)
   type SubCounts = { dispatches: number; livres: number; retours: number };
   const expediteurByLivreur: Record<string, Record<string, SubCounts>> = {};
   const zoneByLivreur: Record<string, Record<string, { commune: string; wilaya: string } & SubCounts>> = {};
-  const globalExpediteurMap: Record<string, SubCounts & { livreursSet: Set<string>; communesSet: Set<string> }> = {};
+  const globalExpediteurMap: Record<string, SubCounts & { livreursSet: Set<string>; communesSet: Set<string>; margeTotale: number }> = {};
   const globalZoneMap: Record<string, { commune: string; wilaya: string } & SubCounts> = {};
+
+  // Compteurs/accumulateurs globaux pour les nouveaux KPI (section 2 de la spec KPI avancés)
+  let totalAnomalies = 0;
+  let totalSms = 0;
+  let sameDayTotal = 0;
+  let sameDayRespecte = 0;
+  let totalFactures = 0;
+  const delaisRestitutionGlobal: number[] = [];
+  const delaisEnlevementGlobal: number[] = [];
 
   const totalLines = rawRows.length;
   onProgress?.(45);
@@ -243,6 +257,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const livreDate = parseEcotrackDate(findKey(row, keysMapping.livreLe));
     const encaisseDate = parseEcotrackDate(findKey(row, keysMapping.encaisseLe));
     const retourDate = parseEcotrackDate(findKey(row, keysMapping.retourDemandeLe));
+    const verseAdminDate = parseEcotrackDate(findKey(row, keysMapping.verseAdminLe));
+    const ramassageDemandeDate = parseEcotrackDate(findKey(row, keysMapping.ramassageDemande));
+    const ramassageEffectueDate = parseEcotrackDate(findKey(row, keysMapping.ramassageEffectue));
 
     // Prestation & Type
     const prestation = String(findKey(row, keysMapping.prestation) || "").trim();
@@ -253,6 +270,16 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const montant = parseNumber(findKey(row, keysMapping.montant));
     const remLivreur = parseNumber(findKey(row, keysMapping.remunerationLivreur));
     const surfLivreur = parseNumber(findKey(row, keysMapping.surfacturationLivreur));
+    const commissionColis = parseNumber(findKey(row, keysMapping.commission));
+
+    // Nouveaux KPI : anomalies, communication, facturation, ponctualité Same Day
+    const remarqueStr = String(findKey(row, keysMapping.remarque) || "").trim();
+    const hasAnomalie = remarqueStr !== "" && remarqueStr !== "/";
+    const smsEnvoyesRaw = findKey(row, keysMapping.smsEnvoyes);
+    const hasSms = smsEnvoyesRaw != null && parseNumber(smsEnvoyesRaw) > 0;
+    const colisFactureStr = String(findKey(row, keysMapping.colisFacture) || "").trim().toLowerCase();
+    const isFacture = colisFactureStr === "oui";
+    const isSameDayPrestation = prestation.toLowerCase().includes("same day");
 
     // Déterminer les booléens clés
     const isDispatched = dispLivreurDate !== null;
@@ -319,6 +346,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
         delaisDisp: [],
         delaisFdr: [],
         delaisEnc: [],
+        delaisRestitution: [],
+        anomalies: 0,
+        smsCount: 0,
         expedieDates: new Set<string>(),
         domicile: 0,
         stopDesk: 0,
@@ -359,12 +389,13 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     if (isLivred) zoneLiv.livres += 1;
     if (isRetour) zoneLiv.retours += 1;
 
-    const gExp = globalExpediteurMap[expediteurStr] ||= { dispatches: 0, livres: 0, retours: 0, livreursSet: new Set<string>(), communesSet: new Set<string>() };
+    const gExp = globalExpediteurMap[expediteurStr] ||= { dispatches: 0, livres: 0, retours: 0, livreursSet: new Set<string>(), communesSet: new Set<string>(), margeTotale: 0 };
     gExp.dispatches += 1;
     if (isLivred) gExp.livres += 1;
     if (isRetour) gExp.retours += 1;
     gExp.livreursSet.add(liveurName);
     if (communeStr) gExp.communesSet.add(communeStr);
+    gExp.margeTotale += montant - commissionColis - remLivreur - surfLivreur;
 
     const gZone = globalZoneMap[zoneKey] ||= { commune: communeLabel, wilaya: wilayaLabel, dispatches: 0, livres: 0, retours: 0 };
     gZone.dispatches += 1;
@@ -375,9 +406,37 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     if (dFdr !== null) liveRecord.delaisFdr.push(dFdr);
     if (dEnc !== null) liveRecord.delaisEnc.push(dEnc);
 
+    // Nouveaux KPI : restitution COD, anomalies, communication, facturation, Same Day, enlèvement
+    const dRestitution = getHoursDiff(encaisseDate, verseAdminDate);
+    if (dRestitution !== null) {
+      liveRecord.delaisRestitution.push(dRestitution);
+      delaisRestitutionGlobal.push(dRestitution);
+    }
+    if (hasAnomalie) {
+      liveRecord.anomalies += 1;
+      totalAnomalies += 1;
+    }
+    if (hasSms) {
+      liveRecord.smsCount += 1;
+      totalSms += 1;
+    }
+    if (isFacture) totalFactures += 1;
+    if (isSameDayPrestation) {
+      sameDayTotal += 1;
+      if (expDate && livreDate && expDate.toDateString() === livreDate.toDateString()) {
+        sameDayRespecte += 1;
+      }
+    }
+    const dEnlevement = getHoursDiff(ramassageDemandeDate, ramassageEffectueDate);
+    if (dEnlevement !== null) delaisEnlevementGlobal.push(dEnlevement);
+
     if (expDate) {
       const expDateStr = expDate.toISOString().slice(0, 10);
       liveRecord.expedieDates.add(expDateStr);
+
+      // Charge journalière par station, pour l'écart-type d'équilibrage
+      if (!stationDailyMap[stationEffective]) stationDailyMap[stationEffective] = {};
+      stationDailyMap[stationEffective][expDateStr] = (stationDailyMap[stationEffective][expDateStr] || 0) + 1;
     }
 
     if (prestation.toLowerCase().includes("stop desk")) {
@@ -458,6 +517,19 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   onProgress?.(65);
 
+  // Écart-type de la charge journalière par station (équilibrage), dupliqué sur chaque livreur de la station
+  const stationStdDev: Record<string, number> = {};
+  Object.keys(stationDailyMap).forEach(station => {
+    const counts = Object.values(stationDailyMap[station]);
+    if (counts.length > 0) {
+      const mean = counts.reduce((a, b) => a + b, 0) / counts.length;
+      const variance = counts.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / counts.length;
+      stationStdDev[station] = parseFloat(Math.sqrt(variance).toFixed(1));
+    } else {
+      stationStdDev[station] = 0;
+    }
+  });
+
   const breakdownRates = (v: SubCounts) => ({
     dispatches: v.dispatches,
     livres: v.livres,
@@ -506,6 +578,15 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const soc_rapidite = parseFloat((getScoreRapidite(delai_moy_h) * 0.20).toFixed(1));
     const soc_enc = parseFloat((getScoreEncaissement(delai_enc_h) * 0.50).toFixed(1));
 
+    // Nouveaux KPI par livreur
+    const delai_restitution_cod_h = s.delaisRestitution.length > 0
+      ? parseFloat((s.delaisRestitution.reduce((a, b) => a + b, 0) / s.delaisRestitution.length).toFixed(1))
+      : 0;
+    const livTauxAnomalie = s.dispatches > 0 ? parseFloat(((s.anomalies / s.dispatches) * 100).toFixed(1)) : 0;
+    const livCoutLivraisonMoyen = s.livres > 0 ? parseFloat((s.remun / s.livres).toFixed(1)) : 0;
+    const livTauxCommunication = s.dispatches > 0 ? parseFloat(((s.smsCount / s.dispatches) * 100).toFixed(1)) : 0;
+    const ecart_type_charge_jour = stationStdDev[s.station] || 0;
+
     const id = `LIV-${1000 + idx}`;
 
     livreurDetails[id] = {
@@ -539,7 +620,13 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       soc,
       soc_taux,
       soc_rapidite,
-      soc_enc
+      soc_enc,
+      delai_restitution_cod_h,
+      taux_anomalie: livTauxAnomalie,
+      cout_livraison_moyen: livCoutLivraisonMoyen,
+      taux_communication: livTauxCommunication,
+      ecart_type_charge_jour,
+      score_stabilite: 0 // nécessite l'historique de plusieurs snapshots, calculé côté frontend plus tard
     };
   });
 
@@ -636,6 +723,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       taux_retour: v.dispatches > 0 ? parseFloat(((v.retours / v.dispatches) * 100).toFixed(1)) : 0,
       nbLivreurs: v.livreursSet.size,
       nbCommunes: v.communesSet.size,
+      margeNette: parseFloat(v.margeTotale.toFixed(2)),
     }))
     .sort((a, b) => b.dispatches - a.dispatches);
 
@@ -658,6 +746,21 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     })
     .sort((a, b) => b.dispatches - a.dispatches);
 
+  // Nouveaux KPI globaux (moyennes/taux dérivés des compteurs accumulés pendant la boucle)
+  const delai_restitution_cod_moy_h = delaisRestitutionGlobal.length > 0
+    ? parseFloat((delaisRestitutionGlobal.reduce((a, b) => a + b, 0) / delaisRestitutionGlobal.length).toFixed(1))
+    : 0;
+  const taux_anomalie = total_dispatches > 0 ? parseFloat(((totalAnomalies / total_dispatches) * 100).toFixed(1)) : 0;
+  const totalRemunGlobal = recap.reduce((s, x) => s + x.remun, 0);
+  const cout_livraison_moyen = total_livres > 0 ? parseFloat((totalRemunGlobal / total_livres).toFixed(1)) : 0;
+  const taux_communication = total_dispatches > 0 ? parseFloat(((totalSms / total_dispatches) * 100).toFixed(1)) : 0;
+  const taux_same_day_respecte = sameDayTotal > 0 ? parseFloat(((sameDayRespecte / sameDayTotal) * 100).toFixed(1)) : 0;
+  const delai_enlevement_moy_h = delaisEnlevementGlobal.length > 0
+    ? parseFloat((delaisEnlevementGlobal.reduce((a, b) => a + b, 0) / delaisEnlevementGlobal.length).toFixed(1))
+    : 0;
+  const taux_colis_factures = total_dispatches > 0 ? parseFloat(((totalFactures / total_dispatches) * 100).toFixed(1)) : 0;
+  const marge_nette_totale = parseFloat(expediteurs.reduce((s, e) => s + e.margeNette, 0).toFixed(2));
+
   const global: GlobalKPIs = {
     total_dispatches,
     total_livres,
@@ -671,7 +774,15 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     lignes_ignorees_sans_livreur: skippedNoLivreur,
     lignes_ignorees_sans_dispatch: skippedNoDispatch,
     statuts_sans_livreur: toSortedBreakdown(skippedNoLivreurByStatut, skippedNoLivreurExamples),
-    statuts_sans_dispatch: toSortedBreakdown(skippedNoDispatchByStatut, skippedNoDispatchExamples)
+    statuts_sans_dispatch: toSortedBreakdown(skippedNoDispatchByStatut, skippedNoDispatchExamples),
+    delai_restitution_cod_moy_h,
+    taux_anomalie,
+    cout_livraison_moyen,
+    taux_communication,
+    taux_same_day_respecte,
+    delai_enlevement_moy_h,
+    taux_colis_factures,
+    marge_nette_totale
   };
 
   onProgress?.(100);
