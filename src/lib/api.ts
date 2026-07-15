@@ -1,4 +1,4 @@
-import { AppData } from "../types";
+import { AppData, FlatRow } from "../types";
 
 async function apiFetch(path: string, options: RequestInit = {}) {
   const res = await fetch(path, {
@@ -46,6 +46,40 @@ export function getLatestSnapshot() {
 
 export function getSnapshot(id: string) {
   return apiFetch(`/api/snapshots/${id}`) as Promise<Snapshot>;
+}
+
+export function uploadRawRowsBatch(snapshotId: string, rows: FlatRow[]) {
+  return apiFetch(`/api/snapshots/${snapshotId}/raw-rows`, {
+    method: "POST",
+    body: JSON.stringify({ rows }),
+  }) as Promise<{ inserted: number }>;
+}
+
+export interface RawRowsFilter {
+  livreur?: string;
+  station?: string;
+  statut?: string;
+  isDispatched?: boolean;
+  isLivre?: boolean;
+  isRetour?: boolean;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface RawRowsResult {
+  rows: FlatRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function queryRawRows(snapshotId: string, filter: RawRowsFilter) {
+  const params = new URLSearchParams();
+  Object.entries(filter).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") params.set(k, String(v));
+  });
+  return apiFetch(`/api/snapshots/${snapshotId}/raw-rows?${params.toString()}`) as Promise<RawRowsResult>;
 }
 
 export interface Threshold {

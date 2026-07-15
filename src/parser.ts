@@ -1,4 +1,4 @@
-import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, SkippedRowExample } from "./types";
+import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, SkippedRowExample, FlatRow } from "./types";
 import { getSOC, getScoreRapidite, getScoreEncaissement } from "./utils";
 
 // Fonction utilitaire pour parser les valeurs numériques
@@ -66,7 +66,7 @@ function getShortDateString(date: Date | null): string | null {
   return `${d}-${m}`;
 }
 
-export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) => void): AppData {
+export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) => void): { data: AppData; flatRows: FlatRow[] } {
   if (!Array.isArray(rawRows) || rawRows.length === 0) {
     throw new Error("Aucune ligne de données trouvée.");
   }
@@ -191,6 +191,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   const MAX_EXAMPLES_PER_BUCKET = 25;
   const skippedNoLivreurExamples: Record<string, SkippedRowExample[]> = {};
   const skippedNoDispatchExamples: Record<string, SkippedRowExample[]> = {};
+  const flatRows: FlatRow[] = [];
 
   const buildExample = (row: any, statut: string): SkippedRowExample => ({
     tracking: String(findKey(row, keysMapping.tracking) || "").trim(),
@@ -222,15 +223,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     // Statut brut du colis, lu en premier pour pouvoir qualifier les lignes ignorées ci-dessous
     const statutBrut = String(findKey(row, keysMapping.statut) || "").trim() || "Statut non renseigné";
 
-    // Récupérer et normaliser les données du colis
+    // Récupérer et normaliser les données du colis (lues avant tout filtre, pour que la ligne à plat
+    // ci-dessous reste complète même pour les colis ignorés — nécessaire au détail ligne par ligne)
     const liveurName = String(findKey(row, keysMapping.livreur) || "/").trim();
-    if (!liveurName || liveurName === "/" || liveurName === "" || liveurName === "null") {
-      skippedNoLivreur++;
-      skippedNoLivreurByStatut[statutBrut] = (skippedNoLivreurByStatut[statutBrut] || 0) + 1;
-      addExample(skippedNoLivreurExamples, statutBrut, row);
-      continue; // Ignorer les colis sans livreur
-    }
-
     const stationDestination = String(findKey(row, keysMapping.stationDest) || "Station Inconnue").trim();
     const stationEffective = stationDestination === "/" ? "Sans Station" : stationDestination;
 
@@ -247,7 +242,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const typeColis = String(findKey(row, keysMapping.type) || "").trim();
     const wilayaStr = String(findKey(row, keysMapping.wilaya) || "").trim();
     const communeStr = String(findKey(row, keysMapping.commune) || "").trim();
-    
+
     const montant = parseNumber(findKey(row, keysMapping.montant));
     const remLivreur = parseNumber(findKey(row, keysMapping.remunerationLivreur));
     const surfLivreur = parseNumber(findKey(row, keysMapping.surfacturationLivreur));
@@ -256,6 +251,37 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const isDispatched = dispLivreurDate !== null;
     const isLivred = livreDate !== null;
     const isRetour = retourDate !== null;
+
+    // Ligne à plat conservée pour le détail permanent ligne par ligne (toutes les lignes, y
+    // compris celles ignorées des agrégats), envoyée séparément de l'AppData agrégée.
+    flatRows.push({
+      tracking: String(findKey(row, keysMapping.tracking) || "").trim(),
+      reference: String(findKey(row, keysMapping.reference) || "").trim(),
+      client: String(findKey(row, keysMapping.client) || "").trim(),
+      livreur: liveurName === "/" ? "" : liveurName,
+      station: stationEffective,
+      wilaya: wilayaStr,
+      commune: communeStr,
+      montant,
+      statut: statutBrut,
+      type: typeColis,
+      prestation,
+      expedieLe: expDate ? expDate.toISOString() : null,
+      dispatcheLe: dispLivreurDate ? dispLivreurDate.toISOString() : null,
+      livreLe: livreDate ? livreDate.toISOString() : null,
+      encaisseLe: encaisseDate ? encaisseDate.toISOString() : null,
+      retourDemandeLe: retourDate ? retourDate.toISOString() : null,
+      isDispatched,
+      isLivre: isLivred,
+      isRetour,
+    });
+
+    if (!liveurName || liveurName === "/" || liveurName === "" || liveurName === "null") {
+      skippedNoLivreur++;
+      skippedNoLivreurByStatut[statutBrut] = (skippedNoLivreurByStatut[statutBrut] || 0) + 1;
+      addExample(skippedNoLivreurExamples, statutBrut, row);
+      continue; // Ignorer les colis sans livreur
+    }
 
     // Si le colis n'est pas dispatché (pas pris en charge), l'ignorer ou le comptabiliser s'il y a un livreur
     // Le brief dit : "total_dispatches = nb de lignes avec 'Dispatché au livreur le' non vide"
@@ -551,9 +577,12 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   onProgress?.(100);
 
   return {
-    global,
-    recap,
-    trend,
-    by_station
+    data: {
+      global,
+      recap,
+      trend,
+      by_station
+    },
+    flatRows
   };
 }

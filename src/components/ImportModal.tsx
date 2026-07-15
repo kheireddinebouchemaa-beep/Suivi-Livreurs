@@ -5,7 +5,10 @@ import { Upload, AlertCircle, CheckCircle2, Lock, Loader2, X } from "lucide-reac
 
 interface ImportModalProps {
   onClose: () => void;
-  onImportSuccess: (data: AppData, fileName: string) => void;
+  // Appelé une fois l'agrégation terminée : met à jour le dashboard et sauvegarde le snapshot.
+  // Retourne l'ID du snapshot créé (ou null si la sauvegarde a échoué) pour l'upload du détail
+  // ligne par ligne qui suit.
+  onAggregated: (data: AppData, fileName: string) => Promise<string | null>;
 }
 
 // Les colonnes importantes que l'on vérifie
@@ -14,7 +17,7 @@ const COLUMNS_TO_VERIFY = [
   "Livreur", "Station déstination", "Dispatché au livreur le", "Livré le", "Retour demandé le"
 ];
 
-export default function ImportModal({ onClose, onImportSuccess }: ImportModalProps) {
+export default function ImportModal({ onClose, onAggregated }: ImportModalProps) {
   const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -125,9 +128,23 @@ export default function ImportModal({ onClose, onImportSuccess }: ImportModalPro
           else if (pct === 98) setParseStepText("Mise à jour du dashboard interactif...");
           else if (pct === 100) setParseStepText("Finalisation !");
         } else if (msg.type === "done") {
-          setTimeout(() => {
-            onImportSuccess(msg.data, file?.name || selectedFile.name);
+          setTimeout(async () => {
+            setParseStepText("Sauvegarde du dashboard...");
+            const newSnapshotId = await onAggregated(msg.data, file?.name || selectedFile.name);
+            if (newSnapshotId && workerRef.current) {
+              setParseProgress(0);
+              setParseStepText("Sauvegarde du détail ligne par ligne...");
+              workerRef.current.postMessage({ type: "uploadRawRows", snapshotId: newSnapshotId });
+            } else {
+              onClose();
+            }
           }, 300);
+        } else if (msg.type === "uploadProgress") {
+          setParseProgress(msg.pct);
+        } else if (msg.type === "uploadDone" || msg.type === "uploadError") {
+          // Non bloquant : le dashboard et le snapshot sont déjà sauvegardés. Sans le détail
+          // ligne par ligne, le drill-down sera simplement indisponible pour cet import.
+          onClose();
         } else if (msg.type === "error") {
           alert(`Erreur de lecture du fichier : ${msg.message}`);
           resetState();

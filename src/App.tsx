@@ -22,6 +22,7 @@ export default function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [previousRecap, setPreviousRecap] = useState<LivreurRecap[]>([]);
   const [fileName, setFileName] = useState<string>("");
+  const [snapshotId, setSnapshotId] = useState<string | null>(null);
   const [thresholds, setThresholds] = useState<Threshold[]>([]);
   const [thresholdsLoaded, setThresholdsLoaded] = useState<boolean>(false);
 
@@ -54,6 +55,7 @@ export default function App() {
         const snapshot = await getLatestSnapshot();
         setData(snapshot.data);
         setFileName(snapshot.file_name);
+        setSnapshotId(snapshot.id);
 
         // Snapshot précédent : sert à détecter les livreurs en forte baisse
         try {
@@ -110,13 +112,15 @@ export default function App() {
   );
   const totalAlertCount = alerts.length + degradations.length;
 
-  // Traiter le succès de l'import Excel
-  const handleImportSuccess = async (newData: AppData, importedFileName: string) => {
+  // Traiter le résultat de l'agrégation (avant l'upload du détail ligne par ligne) :
+  // le dashboard s'affiche immédiatement, la modale reste ouverte pour uploader le détail.
+  // Retourne l'ID du nouveau snapshot (ou null si la sauvegarde a échoué) pour que la modale
+  // sache où rattacher les lignes brutes.
+  const handleAggregated = async (newData: AppData, importedFileName: string): Promise<string | null> => {
     // L'ancien jeu de données devient la référence de comparaison
     if (data) setPreviousRecap(data.recap);
     setData(newData);
     setFileName(importedFileName);
-    setShowImportModal(false);
     setSelectedPage("overview");
     const skipped = newData.global.lignes_ignorees_sans_livreur + newData.global.lignes_ignorees_sans_dispatch;
     const skippedNote = skipped > 0
@@ -125,9 +129,12 @@ export default function App() {
     triggerToast(`✅ ${newData.global.total_dispatches.toLocaleString('fr-DZ')} colis chargés avec succès !${skippedNote}`, "success");
 
     try {
-      await saveSnapshot(importedFileName, newData, "import");
+      const saved = await saveSnapshot(importedFileName, newData, "import");
+      setSnapshotId(saved.id);
+      return saved.id;
     } catch (err: any) {
       triggerToast(`⚠️ Import affiché mais non sauvegardé en base : ${err.message}`, "error");
+      return null;
     }
   };
 
@@ -344,6 +351,7 @@ export default function App() {
                   {selectedPage === "overview" && (
                     <OverviewTab
                       data={data}
+                      snapshotId={snapshotId}
                       onNavigateToLivreurs={() => setSelectedPage("livreurs")}
                       onNavigateToRetours={() => setSelectedPage("retours")}
                       onNavigateToDelais={() => setSelectedPage("delais")}
@@ -404,7 +412,7 @@ export default function App() {
         {showImportModal && (
           <ImportModal
             onClose={() => setShowImportModal(false)}
-            onImportSuccess={handleImportSuccess}
+            onAggregated={handleAggregated}
           />
         )}
 

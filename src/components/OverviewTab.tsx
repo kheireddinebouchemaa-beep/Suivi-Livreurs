@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 import { AppData, LivreurRecap, SkippedRowExample } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
-import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText, Info } from "lucide-react";
+import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText, Info, Search } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { exportOverviewExcel } from "../exportExcel";
 import { exportOverviewPdf } from "../exportPdf";
+import DrillDownModal from "./DrillDownModal";
+import { RawRowsFilter } from "../lib/api";
 
 function AnimatedNumber({ value, suffix = "", isDecimal = false }: { value: number; suffix?: string; isDecimal?: boolean }) {
   const [display, setDisplay] = useState(0);
@@ -42,18 +44,20 @@ function AnimatedNumber({ value, suffix = "", isDecimal = false }: { value: numb
 
 interface OverviewTabProps {
   data: AppData;
+  snapshotId: string | null;
   onNavigateToLivreurs: () => void;
   onNavigateToRetours: () => void;
   onNavigateToDelais: () => void;
 }
 
-export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRetours, onNavigateToDelais }: OverviewTabProps) {
+export default function OverviewTab({ data, snapshotId, onNavigateToLivreurs, onNavigateToRetours, onNavigateToDelais }: OverviewTabProps) {
   const lineChartRef = useRef<HTMLCanvasElement | null>(null);
   const barChartRef = useRef<HTMLCanvasElement | null>(null);
   const lineChartInstance = useRef<Chart | null>(null);
   const barChartInstance = useRef<Chart | null>(null);
   const [showSkippedDetail, setShowSkippedDetail] = useState(false);
   const [examplesModal, setExamplesModal] = useState<{ label: string; rows: SkippedRowExample[] } | null>(null);
+  const [drillDown, setDrillDown] = useState<{ title: string; filter: Omit<RawRowsFilter, "search" | "page" | "pageSize"> } | null>(null);
 
   // 1. Calculer la distribution du taux de livraison
   // Tranches : <50%, 50-60%, 60-70%, 70-80%, 80-90%, 90-95%, >95%
@@ -337,25 +341,34 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
             <span className="text-2xl font-bold font-mono text-white"><AnimatedNumber value={data.global.nb_livreurs} /></span>
           </div>
           
-          <div className="pt-3 md:pt-0 md:pl-4">
+          <button
+            onClick={() => setDrillDown({ title: "Total Dispatchés — détail", filter: { isDispatched: true } })}
+            className="pt-3 md:pt-0 md:pl-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+          >
             <span className="block text-xs text-slate-300">Total Dispatchés</span>
             <span className="text-2xl font-bold font-mono text-white"><AnimatedNumber value={data.global.total_dispatches} /></span>
-          </div>
+          </button>
 
-          <div className="pt-3 md:pt-0 md:pl-4">
+          <button
+            onClick={() => setDrillDown({ title: "Total Livrés — détail", filter: { isLivre: true } })}
+            className="pt-3 md:pt-0 md:pl-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+          >
             <span className="block text-xs text-slate-300">Total Livrés</span>
             <span className="text-2xl font-bold font-mono text-[#18A558]"><AnimatedNumber value={data.global.total_livres} /></span>
-          </div>
+          </button>
 
           <div className="pt-3 md:pt-0 md:pl-4">
             <span className="block text-xs text-slate-300">Taux Livraison</span>
             <span className="text-2xl font-bold font-mono text-orange-450 text-[#E8741A]"><AnimatedNumber value={data.global.taux_global} isDecimal suffix="%" /></span>
           </div>
 
-          <div className="pt-3 md:pt-0 md:pl-4">
+          <button
+            onClick={() => setDrillDown({ title: "Total Retours — détail", filter: { isRetour: true } })}
+            className="pt-3 md:pt-0 md:pl-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+          >
             <span className="block text-xs text-slate-300">Total Retours</span>
             <span className="text-2xl font-bold font-mono text-[#D93025]"><AnimatedNumber value={data.global.total_retours} /></span>
-          </div>
+          </button>
 
           <div className="pt-3 md:pt-0 md:pl-4">
             <span className="block text-xs text-slate-300">Taux Retour</span>
@@ -562,16 +575,19 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
         {/* Non livrés */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-purple-500 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setDrillDown({ title: "Colis Non Livrés — détail", filter: { isDispatched: true, isLivre: false } })}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Colis Non Livrés</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Colis Non Livrés <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.non_livres} /></h3>
               <p className="text-[10px] text-purple-600 mt-1 font-sans">Différence (Dispatch - Livré)</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
               <Package className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* SOC MOYEN RESEAU (9ème carte) */}
@@ -805,6 +821,18 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Drill-down générique : détail ligne par ligne depuis une carte du Spotlight */}
+      <AnimatePresence>
+        {drillDown && (
+          <DrillDownModal
+            snapshotId={snapshotId}
+            title={drillDown.title}
+            filter={drillDown.filter}
+            onClose={() => setDrillDown(null)}
+          />
         )}
       </AnimatePresence>
     </div>

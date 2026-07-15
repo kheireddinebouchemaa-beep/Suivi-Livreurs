@@ -1,3 +1,26 @@
+// Ligne à plat conservée pour le détail permanent ligne par ligne (drill-down), une par colis du fichier importé.
+export interface FlatRow {
+  tracking: string;
+  reference: string;
+  client: string;
+  livreur: string;
+  station: string;
+  wilaya: string;
+  commune: string;
+  montant: number;
+  statut: string;
+  type: string;
+  prestation: string;
+  expedieLe: string | null;       // ISO 8601
+  dispatcheLe: string | null;
+  livreLe: string | null;
+  encaisseLe: string | null;
+  retourDemandeLe: string | null;
+  isDispatched: boolean;
+  isLivre: boolean;
+  isRetour: boolean;
+}
+
 export interface SkippedRowExample {
   tracking: string;
   reference: string;
