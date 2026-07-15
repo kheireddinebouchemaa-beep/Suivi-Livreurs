@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
-import { AppData, LivreurRecap, SkippedRowExample } from "../types";
+import { AppData, LivreurRecap, SkippedRowExample, KpiTrend } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
 import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText, Info, Search } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -45,12 +45,17 @@ function AnimatedNumber({ value, suffix = "", isDecimal = false }: { value: numb
 interface OverviewTabProps {
   data: AppData;
   snapshotId: string | null;
+  // Tendances vs snapshot précédent, résumé en langage naturel et nb d'alertes : câblés ici (section 5
+  // de la spec KPI avancés), consommés par la refonte visuelle en 3 niveaux (section 6).
+  tendances: KpiTrend[];
+  resumeNaturel: string;
+  nbAlertes: number;
   onNavigateToLivreurs: () => void;
   onNavigateToRetours: () => void;
   onNavigateToDelais: () => void;
 }
 
-export default function OverviewTab({ data, snapshotId, onNavigateToLivreurs, onNavigateToRetours, onNavigateToDelais }: OverviewTabProps) {
+export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel, nbAlertes, onNavigateToLivreurs, onNavigateToRetours, onNavigateToDelais }: OverviewTabProps) {
   const lineChartRef = useRef<HTMLCanvasElement | null>(null);
   const barChartRef = useRef<HTMLCanvasElement | null>(null);
   const lineChartInstance = useRef<Chart | null>(null);

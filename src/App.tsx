@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { AppData, LivreurRecap } from "./types";
+import { AppData } from "./types";
 import OverviewTab from "./components/OverviewTab";
 import LivreursTab from "./components/LivreursTab";
 import RetoursTab from "./components/RetoursTab";
@@ -16,13 +16,15 @@ import { AlertTriangle, Upload, FileText, CheckCircle2, Info, Loader2, Settings,
 import { AnimatePresence, motion } from "motion/react";
 import { getLatestSnapshot, getSnapshot, listSnapshots, saveSnapshot, getThresholds, Threshold } from "./lib/api";
 import { computeAlerts, computeDegradations } from "./lib/alerts";
+import { computeTrends } from "./lib/trends";
+import { generateResume } from "./lib/summary";
 
 export default function App() {
   const [bootLoading, setBootLoading] = useState<boolean>(true);
 
   // Données : null tant qu'aucun snapshot n'est chargé (pas de données de démonstration)
   const [data, setData] = useState<AppData | null>(null);
-  const [previousRecap, setPreviousRecap] = useState<LivreurRecap[]>([]);
+  const [previousData, setPreviousData] = useState<AppData | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [snapshotId, setSnapshotId] = useState<string | null>(null);
   const [thresholds, setThresholds] = useState<Threshold[]>([]);
@@ -66,7 +68,7 @@ export default function App() {
           const prevMeta = idx >= 0 ? all[idx + 1] : all[1];
           if (prevMeta) {
             const prevSnapshot = await getSnapshot(prevMeta.id);
-            setPreviousRecap(prevSnapshot.data.recap);
+            setPreviousData(prevSnapshot.data);
           }
         } catch {
           // silencieux : pas de comparaison possible, les alertes de seuils restent actives
@@ -109,10 +111,20 @@ export default function App() {
     [data, thresholds]
   );
   const degradations = useMemo(
-    () => (data && previousRecap.length > 0 ? computeDegradations(data.recap, previousRecap) : []),
-    [data, previousRecap]
+    () => (data && previousData && previousData.recap.length > 0 ? computeDegradations(data.recap, previousData.recap) : []),
+    [data, previousData]
   );
   const totalAlertCount = alerts.length + degradations.length;
+
+  // ── Tendances vs snapshot précédent + résumé en langage naturel (Niveau 1 de l'écran d'accueil) ──
+  const tendances = useMemo(
+    () => (data ? computeTrends(data, previousData) : []),
+    [data, previousData]
+  );
+  const resumeNaturel = useMemo(
+    () => (data ? generateResume(data, tendances, totalAlertCount) : ""),
+    [data, tendances, totalAlertCount]
+  );
 
   // Traiter le résultat de l'agrégation (avant l'upload du détail ligne par ligne) :
   // le dashboard s'affiche immédiatement, la modale reste ouverte pour uploader le détail.
@@ -120,7 +132,7 @@ export default function App() {
   // sache où rattacher les lignes brutes.
   const handleAggregated = async (newData: AppData, importedFileName: string): Promise<string | null> => {
     // L'ancien jeu de données devient la référence de comparaison
-    if (data) setPreviousRecap(data.recap);
+    if (data) setPreviousData(data);
     setData(newData);
     setFileName(importedFileName);
     setSelectedPage("overview");
@@ -356,6 +368,9 @@ export default function App() {
                     <OverviewTab
                       data={data}
                       snapshotId={snapshotId}
+                      tendances={tendances}
+                      resumeNaturel={resumeNaturel}
+                      nbAlertes={totalAlertCount}
                       onNavigateToLivreurs={() => setSelectedPage("livreurs")}
                       onNavigateToRetours={() => setSelectedPage("retours")}
                       onNavigateToDelais={() => setSelectedPage("delais")}
