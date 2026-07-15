@@ -59,6 +59,8 @@ export interface RawRowsFilter {
   livreur?: string;
   station?: string;
   statut?: string;
+  expediteur?: string;
+  commune?: string;
   isDispatched?: boolean;
   isLivre?: boolean;
   isRetour?: boolean;

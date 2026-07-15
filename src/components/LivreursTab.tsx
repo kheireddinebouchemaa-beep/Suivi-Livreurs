@@ -5,12 +5,14 @@ import { Search, RotateCcw, ChevronDown, ChevronUp, SlidersHorizontal, ArrowUpDo
 import { motion, AnimatePresence } from "motion/react";
 import { exportLivreursExcel } from "../exportExcel";
 import { exportLivreursPdf } from "../exportPdf";
+import LivreurDetailModal from "./LivreurDetailModal";
 
 interface LivreursTabProps {
   data: AppData;
+  snapshotId: string | null;
 }
 
-export default function LivreursTab({ data }: LivreursTabProps) {
+export default function LivreursTab({ data, snapshotId }: LivreursTabProps) {
   // Détection prefers-reduced-motion
   const [prefersReduced, setPrefersReduced] = useState<boolean>(false);
   useEffect(() => {
@@ -41,6 +43,9 @@ export default function LivreursTab({ data }: LivreursTabProps) {
   // Tri
   const [sortField, setSortField] = useState<keyof LivreurRecap>("taux_livraison");
   const [sortAsc, setSortAsc] = useState(false);
+
+  // Fiche détaillée d'un livreur (colis, expéditeurs, communes)
+  const [detailLivreur, setDetailLivreur] = useState<LivreurRecap | null>(null);
 
   // Extraire les stations uniques
   const stationsList = useMemo(() => {
@@ -435,9 +440,11 @@ export default function LivreursTab({ data }: LivreursTabProps) {
                 const animateRow = !prefersReduced && index < 50;
 
                 return (
-                  <motion.tr 
-                    key={l.id} 
-                    className={rowBg}
+                  <motion.tr
+                    key={l.id}
+                    className={`${rowBg} cursor-pointer`}
+                    onClick={() => setDetailLivreur(l)}
+                    title="Voir la fiche détaillée (colis, expéditeurs, communes)"
                     initial={animateRow ? { opacity: 0, x: -8 } : false}
                     animate={animateRow ? { opacity: 1, x: 0 } : false}
                     transition={animateRow ? { delay: index * 0.015, duration: 0.25 } : undefined}
@@ -447,7 +454,7 @@ export default function LivreursTab({ data }: LivreursTabProps) {
                       {index + 1}
                     </td>
                     {/* Nom livreur */}
-                    <td className="px-4 py-2.5 font-bold text-[#1B3A5C] truncate max-w-[180px]">
+                    <td className="px-4 py-2.5 font-bold text-[#1B3A5C] truncate max-w-[180px] underline decoration-dotted decoration-slate-300 underline-offset-2">
                       {l.livreur}
                     </td>
                     {/* Station */}
@@ -579,6 +586,18 @@ export default function LivreursTab({ data }: LivreursTabProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-xs font-semibold font-sans">{localToast}</span>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fiche détaillée du livreur sélectionné */}
+      <AnimatePresence>
+        {detailLivreur && (
+          <LivreurDetailModal
+            snapshotId={snapshotId}
+            livreur={detailLivreur}
+            detail={data.livreurDetails[detailLivreur.id]}
+            onClose={() => setDetailLivreur(null)}
+          />
         )}
       </AnimatePresence>
     </div>

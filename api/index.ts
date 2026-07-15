@@ -87,6 +87,7 @@ app.post("/api/snapshots/:id/raw-rows", async (req, res) => {
     tracking: r.tracking || null,
     reference: r.reference || null,
     client: r.client || null,
+    expediteur: r.expediteur || null,
     livreur: r.livreur || null,
     station: r.station || null,
     wilaya: r.wilaya || null,
@@ -119,7 +120,7 @@ app.get("/api/snapshots/:id/raw-rows", async (req, res) => {
   let query = supabase
     .from("snapshot_rows")
     .select(
-      "tracking, reference, client, livreur, station, wilaya, commune, montant, statut, type, prestation, expedie_le, dispatche_le, livre_le, encaisse_le, retour_demande_le, is_dispatched, is_livre, is_retour",
+      "tracking, reference, client, expediteur, livreur, station, wilaya, commune, montant, statut, type, prestation, expedie_le, dispatche_le, livre_le, encaisse_le, retour_demande_le, is_dispatched, is_livre, is_retour",
       { count: "exact" }
     )
     .eq("snapshot_id", req.params.id);
@@ -127,12 +128,14 @@ app.get("/api/snapshots/:id/raw-rows", async (req, res) => {
   if (req.query.livreur) query = query.eq("livreur", String(req.query.livreur));
   if (req.query.station) query = query.eq("station", String(req.query.station));
   if (req.query.statut) query = query.eq("statut", String(req.query.statut));
+  if (req.query.expediteur) query = query.eq("expediteur", String(req.query.expediteur));
+  if (req.query.commune) query = query.eq("commune", String(req.query.commune));
   if (req.query.isDispatched !== undefined) query = query.eq("is_dispatched", req.query.isDispatched === "true");
   if (req.query.isLivre !== undefined) query = query.eq("is_livre", req.query.isLivre === "true");
   if (req.query.isRetour !== undefined) query = query.eq("is_retour", req.query.isRetour === "true");
   if (req.query.search) {
     const term = String(req.query.search).replace(/[%_,()]/g, "");
-    query = query.or(`tracking.ilike.%${term}%,reference.ilike.%${term}%,client.ilike.%${term}%`);
+    query = query.or(`tracking.ilike.%${term}%,reference.ilike.%${term}%,client.ilike.%${term}%,expediteur.ilike.%${term}%`);
   }
 
   const { data, error, count } = await query.order("id", { ascending: true }).range(from, to);
@@ -143,6 +146,7 @@ app.get("/api/snapshots/:id/raw-rows", async (req, res) => {
       tracking: r.tracking,
       reference: r.reference,
       client: r.client,
+      expediteur: r.expediteur,
       livreur: r.livreur,
       station: r.station,
       wilaya: r.wilaya,

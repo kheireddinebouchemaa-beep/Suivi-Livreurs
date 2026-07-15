@@ -6,6 +6,8 @@ import RetoursTab from "./components/RetoursTab";
 import DelaisTab from "./components/DelaisTab";
 import PerformanceTab from "./components/PerformanceTab";
 import StationsTab from "./components/StationsTab";
+import ExpediteursTab from "./components/ExpediteursTab";
+import ZonesTab from "./components/ZonesTab";
 import ImportModal from "./components/ImportModal";
 import PdfModal from "./components/PdfModal";
 import AlertsPanel from "./components/AlertsPanel";
@@ -263,7 +265,9 @@ export default function App() {
                 { id: "retours", label: "↩️ Retours & Incidents", count: null },
                 { id: "delais", label: "⏱️ Délais de transit", count: null },
                 { id: "performance", label: "🏆 Classement SOC", count: null },
-                { id: "stations", label: "🏢 Par Station", count: null }
+                { id: "stations", label: "🏢 Par Station", count: null },
+                { id: "expediteurs", label: "📦 Expéditeurs", count: null },
+                { id: "zones", label: "🗺️ Zones", count: null }
               ].map((tab) => {
                 const isActive = selectedPage === tab.id;
                 return (
@@ -359,7 +363,7 @@ export default function App() {
                   )}
 
                   {selectedPage === "livreurs" && (
-                    <LivreursTab data={data} />
+                    <LivreursTab data={data} snapshotId={snapshotId} />
                   )}
 
                   {selectedPage === "retours" && (
@@ -376,6 +380,14 @@ export default function App() {
 
                   {selectedPage === "stations" && (
                     <StationsTab data={data} />
+                  )}
+
+                  {selectedPage === "expediteurs" && (
+                    <ExpediteursTab data={data} />
+                  )}
+
+                  {selectedPage === "zones" && (
+                    <ZonesTab data={data} />
                   )}
                 </motion.div>
               </AnimatePresence>

@@ -1,4 +1,4 @@
-import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, SkippedRowExample, FlatRow } from "./types";
+import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, SkippedRowExample, FlatRow, BreakdownRow, LivreurDetail, ExpediteurRecap, ZoneRecap } from "./types";
 import { getSOC, getScoreRapidite, getScoreEncaissement } from "./utils";
 
 // Fonction utilitaire pour parser les valeurs numériques
@@ -177,6 +177,13 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   const dailyTrendMap: Record<string, { dispatches: number; livres: number; retoursBefore: number; livesEffective: number; retoursEffective: number }> = {};
   const stationsMap: Record<string, { livreurs: Set<string>; dispatches: number; livres: number; retours: number; delais: number[] }> = {};
 
+  // Détail expéditeur/zone par livreur (Volet A) + agrégats réseau (Volets B/C)
+  type SubCounts = { dispatches: number; livres: number; retours: number };
+  const expediteurByLivreur: Record<string, Record<string, SubCounts>> = {};
+  const zoneByLivreur: Record<string, Record<string, { commune: string; wilaya: string } & SubCounts>> = {};
+  const globalExpediteurMap: Record<string, SubCounts & { livreursSet: Set<string>; communesSet: Set<string> }> = {};
+  const globalZoneMap: Record<string, { commune: string; wilaya: string } & SubCounts> = {};
+
   const totalLines = rawRows.length;
   onProgress?.(45);
 
@@ -258,6 +265,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       tracking: String(findKey(row, keysMapping.tracking) || "").trim(),
       reference: String(findKey(row, keysMapping.reference) || "").trim(),
       client: String(findKey(row, keysMapping.client) || "").trim(),
+      expediteur: String(findKey(row, keysMapping.expediteur) || "").trim(),
       livreur: liveurName === "/" ? "" : liveurName,
       station: stationEffective,
       wilaya: wilayaStr,
@@ -332,6 +340,36 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     if (isRetour) {
       liveRecord.retours += 1;
     }
+
+    // Détail par expéditeur / zone, pour ce livreur et au niveau réseau
+    const expediteurStr = String(findKey(row, keysMapping.expediteur) || "").trim() || "(non renseigné)";
+    const communeLabel = communeStr || "(non renseignée)";
+    const wilayaLabel = wilayaStr || "(non renseignée)";
+    const zoneKey = `${communeLabel}||${wilayaLabel}`;
+
+    if (!expediteurByLivreur[livreurKey]) expediteurByLivreur[livreurKey] = {};
+    const expLiv = expediteurByLivreur[livreurKey][expediteurStr] ||= { dispatches: 0, livres: 0, retours: 0 };
+    expLiv.dispatches += 1;
+    if (isLivred) expLiv.livres += 1;
+    if (isRetour) expLiv.retours += 1;
+
+    if (!zoneByLivreur[livreurKey]) zoneByLivreur[livreurKey] = {};
+    const zoneLiv = zoneByLivreur[livreurKey][zoneKey] ||= { commune: communeLabel, wilaya: wilayaLabel, dispatches: 0, livres: 0, retours: 0 };
+    zoneLiv.dispatches += 1;
+    if (isLivred) zoneLiv.livres += 1;
+    if (isRetour) zoneLiv.retours += 1;
+
+    const gExp = globalExpediteurMap[expediteurStr] ||= { dispatches: 0, livres: 0, retours: 0, livreursSet: new Set<string>(), communesSet: new Set<string>() };
+    gExp.dispatches += 1;
+    if (isLivred) gExp.livres += 1;
+    if (isRetour) gExp.retours += 1;
+    gExp.livreursSet.add(liveurName);
+    if (communeStr) gExp.communesSet.add(communeStr);
+
+    const gZone = globalZoneMap[zoneKey] ||= { commune: communeLabel, wilaya: wilayaLabel, dispatches: 0, livres: 0, retours: 0 };
+    gZone.dispatches += 1;
+    if (isLivred) gZone.livres += 1;
+    if (isRetour) gZone.retours += 1;
 
     if (dDisp !== null) liveRecord.delaisDisp.push(dDisp);
     if (dFdr !== null) liveRecord.delaisFdr.push(dFdr);
@@ -420,6 +458,26 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   onProgress?.(65);
 
+  const breakdownRates = (v: SubCounts) => ({
+    dispatches: v.dispatches,
+    livres: v.livres,
+    retours: v.retours,
+    taux_livraison: v.dispatches > 0 ? parseFloat(((v.livres / v.dispatches) * 100).toFixed(1)) : 0,
+    taux_retour: v.dispatches > 0 ? parseFloat(((v.retours / v.dispatches) * 100).toFixed(1)) : 0,
+  });
+
+  const toExpediteurRows = (entries: Record<string, SubCounts>): BreakdownRow[] =>
+    Object.entries(entries)
+      .map(([key, v]) => ({ key, label: key, ...breakdownRates(v) }))
+      .sort((a, b) => b.dispatches - a.dispatches);
+
+  const toZoneRows = (entries: Record<string, { commune: string; wilaya: string } & SubCounts>): BreakdownRow[] =>
+    Object.entries(entries)
+      .map(([key, v]) => ({ key, label: v.commune, wilaya: v.wilaya, ...breakdownRates(v) }))
+      .sort((a, b) => b.dispatches - a.dispatches);
+
+  const livreurDetails: Record<string, LivreurDetail> = {};
+
   // Formater les livreurs
   const recap: LivreurRecap[] = Object.keys(aggregatedLivreurs).map((k, idx) => {
     const s = aggregatedLivreurs[k];
@@ -448,8 +506,16 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const soc_rapidite = parseFloat((getScoreRapidite(delai_moy_h) * 0.20).toFixed(1));
     const soc_enc = parseFloat((getScoreEncaissement(delai_enc_h) * 0.50).toFixed(1));
 
+    const id = `LIV-${1000 + idx}`;
+
+    livreurDetails[id] = {
+      livreurId: id,
+      parExpediteur: toExpediteurRows(expediteurByLivreur[k] || {}),
+      parZone: toZoneRows(zoneByLivreur[k] || {}),
+    };
+
     return {
-      id: `LIV-${1000 + idx}`,
+      id,
       livreur: s.liveur,
       station: s.station,
       dispatches: s.dispatches,
@@ -558,6 +624,40 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       .map(([statut, count]) => ({ statut, count, examples: examples[statut] || [] }))
       .sort((a, b) => b.count - a.count);
 
+  // Volet B : vue réseau par expéditeur
+  const expediteurs: ExpediteurRecap[] = Object.entries(globalExpediteurMap)
+    .map(([label, v], idx) => ({
+      id: `EXP-${1000 + idx}`,
+      expediteur: label,
+      dispatches: v.dispatches,
+      livres: v.livres,
+      retours: v.retours,
+      taux_livraison: v.dispatches > 0 ? parseFloat(((v.livres / v.dispatches) * 100).toFixed(1)) : 0,
+      taux_retour: v.dispatches > 0 ? parseFloat(((v.retours / v.dispatches) * 100).toFixed(1)) : 0,
+      nbLivreurs: v.livreursSet.size,
+      nbCommunes: v.communesSet.size,
+    }))
+    .sort((a, b) => b.dispatches - a.dispatches);
+
+  // Volet C : vue géographique par zone (commune + wilaya)
+  const zones: ZoneRecap[] = Object.entries(globalZoneMap)
+    .map(([key, v]) => {
+      const taux_retour = v.dispatches > 0 ? parseFloat(((v.retours / v.dispatches) * 100).toFixed(1)) : 0;
+      const niveauRisque: "faible" | "moyen" | "eleve" = taux_retour > 30 ? "eleve" : taux_retour >= 15 ? "moyen" : "faible";
+      return {
+        id: key,
+        commune: v.commune,
+        wilaya: v.wilaya,
+        dispatches: v.dispatches,
+        livres: v.livres,
+        retours: v.retours,
+        taux_livraison: v.dispatches > 0 ? parseFloat(((v.livres / v.dispatches) * 100).toFixed(1)) : 0,
+        taux_retour,
+        niveauRisque,
+      };
+    })
+    .sort((a, b) => b.dispatches - a.dispatches);
+
   const global: GlobalKPIs = {
     total_dispatches,
     total_livres,
@@ -581,7 +681,10 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       global,
       recap,
       trend,
-      by_station
+      by_station,
+      expediteurs,
+      zones,
+      livreurDetails
     },
     flatRows
   };

@@ -3,6 +3,7 @@ export interface FlatRow {
   tracking: string;
   reference: string;
   client: string;
+  expediteur: string;
   livreur: string;
   station: string;
   wilaya: string;
@@ -102,9 +103,54 @@ export interface StationRecap {
   delai_moy: number;
 }
 
+export interface BreakdownRow {
+  key: string;              // identifiant unique (nom expéditeur, ou "commune||wilaya")
+  label: string;             // libellé affiché
+  wilaya?: string;           // uniquement pour les lignes de zone
+  dispatches: number;
+  livres: number;
+  retours: number;
+  taux_livraison: number;
+  taux_retour: number;
+}
+
+export interface LivreurDetail {
+  livreurId: string;         // correspond à LivreurRecap.id
+  parExpediteur: BreakdownRow[];  // triée dispatches desc
+  parZone: BreakdownRow[];        // triée dispatches desc
+}
+
+export interface ExpediteurRecap {
+  id: string;
+  expediteur: string;
+  idExpediteur?: string;
+  dispatches: number;
+  livres: number;
+  retours: number;
+  taux_livraison: number;
+  taux_retour: number;
+  nbLivreurs: number;
+  nbCommunes: number;
+}
+
+export interface ZoneRecap {
+  id: string;                // "commune||wilaya"
+  commune: string;
+  wilaya: string;
+  dispatches: number;
+  livres: number;
+  retours: number;
+  taux_livraison: number;
+  taux_retour: number;
+  niveauRisque: "faible" | "moyen" | "eleve";
+}
+
 export interface AppData {
   global: GlobalKPIs;
   recap: LivreurRecap[];
   trend: DailyTrend[];
   by_station: StationRecap[];
+  expediteurs: ExpediteurRecap[];
+  zones: ZoneRecap[];
+  livreurDetails: Record<string, LivreurDetail>;  // clé = LivreurRecap.id
 }

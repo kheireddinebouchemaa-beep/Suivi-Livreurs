@@ -66,7 +66,7 @@ export default function DrillDownModal({ snapshotId, title, filter, onClose }: D
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
+        className="bg-white rounded-2xl max-w-5xl w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
       >
         <div className="bg-[#1B3A5C] text-white px-4 py-3 flex justify-between items-center flex-shrink-0">
           <div>
@@ -116,9 +116,10 @@ export default function DrillDownModal({ snapshotId, title, filter, onClose }: D
                   <thead className="bg-slate-100 sticky top-0">
                     <tr>
                       <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Tracking</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Expéditeur</th>
                       <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Client</th>
                       <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livreur</th>
-                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Station</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Commune</th>
                       <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Statut</th>
                       <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livré le</th>
                       <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Montant</th>
@@ -128,9 +129,10 @@ export default function DrillDownModal({ snapshotId, title, filter, onClose }: D
                     {rows.map((r, i) => (
                       <tr key={i} className="border-t border-slate-100 hover:bg-slate-50">
                         <td className="px-3 py-1.5 font-mono">{r.tracking || "–"}</td>
+                        <td className="px-3 py-1.5">{r.expediteur || "–"}</td>
                         <td className="px-3 py-1.5">{r.client || "–"}</td>
                         <td className="px-3 py-1.5">{r.livreur || "–"}</td>
-                        <td className="px-3 py-1.5">{r.station || "–"}</td>
+                        <td className="px-3 py-1.5">{r.commune || "–"}</td>
                         <td className="px-3 py-1.5">{r.statut || "–"}</td>
                         <td className="px-3 py-1.5 font-mono">{r.livreLe ? new Date(r.livreLe).toLocaleDateString("fr-DZ") : "–"}</td>
                         <td className="px-3 py-1.5 text-right font-mono">{r.montant ? N(r.montant) : "–"}</td>
