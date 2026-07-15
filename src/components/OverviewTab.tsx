@@ -2,12 +2,44 @@ import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 import { AppData, LivreurRecap, SkippedRowExample, KpiTrend } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
-import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText, Info, Search } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText, Info, Search, Wallet, RefreshCcw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { exportOverviewExcel } from "../exportExcel";
 import { exportOverviewPdf } from "../exportPdf";
 import DrillDownModal from "./DrillDownModal";
 import { RawRowsFilter } from "../lib/api";
+
+// Flèche de tendance : verte/rouge/grise selon le sens du mieux pour ce KPI (inverse=true pour
+// les métriques où une baisse est une amélioration, ex. un délai). Jamais de rouge pour une simple
+// variation — le rouge reste réservé aux couleurs "nécessite une action" définies par carte.
+function TrendArrow({ trend, unit = "", inverse = false }: { trend: KpiTrend | undefined; unit?: string; inverse?: boolean }) {
+  if (!trend || trend.variation === null) {
+    return <span className="text-[10px] text-slate-400 font-sans">Pas d'historique à comparer</span>;
+  }
+  const improving = inverse ? trend.variation < -0.05 : trend.variation > 0.05;
+  const worsening = inverse ? trend.variation > 0.05 : trend.variation < -0.05;
+  const Icon = improving ? TrendingUp : worsening ? TrendingDown : Minus;
+  const colorClass = improving ? "text-emerald-600" : worsening ? "text-amber-600" : "text-slate-400";
+  const sign = trend.variation > 0 ? "+" : "";
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold font-mono ${colorClass}`}>
+      <Icon className="w-3 h-3" />
+      {sign}{trend.variation.toFixed(1)}{unit} vs période précédente
+    </span>
+  );
+}
+
+// Libellés lisibles + unité + sens "mieux" pour chaque clé de src/lib/trends.ts
+const TREND_LABELS: { key: string; label: string; unit: string; inverse: boolean }[] = [
+  { key: "taux_livraison_global", label: "Taux de livraison", unit: "%", inverse: false },
+  { key: "soc_moyen", label: "SOC moyen", unit: "", inverse: false },
+  { key: "delai_restitution_cod", label: "Restitution COD", unit: "h", inverse: true },
+  { key: "taux_anomalie", label: "Taux d'anomalie", unit: "%", inverse: true },
+  { key: "marge_nette", label: "Marge nette", unit: " DA", inverse: false },
+  { key: "taux_retour_global", label: "Taux de retour", unit: "%", inverse: true },
+  { key: "delai_moy", label: "Délai moyen dispatch→livré", unit: "h", inverse: true },
+  { key: "taux_communication", label: "Communication (SMS)", unit: "%", inverse: false },
+];
 
 function AnimatedNumber({ value, suffix = "", isDecimal = false }: { value: number; suffix?: string; isDecimal?: boolean }) {
   const [display, setDisplay] = useState(0);
@@ -333,6 +365,71 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         </div>
       </div>
 
+      {/* NIVEAU 1 — Résumé : toujours visible, sans scroll. Phrase auto-générée + 5 chiffres clés
+          avec tendance et repère, jamais un pourcentage nu. */}
+      <div className={`rounded-2xl p-4 flex items-center gap-3 border text-sm font-semibold font-sans ${
+        nbAlertes > 0 ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-emerald-50 border-emerald-200 text-emerald-900"
+      }`}>
+        {nbAlertes > 0 ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+        {resumeNaturel}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Taux de livraison réseau */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase">Taux Livraison Réseau</p>
+          <h3 className={`text-2xl font-bold font-mono ${data.global.taux_global >= 90 ? "text-emerald-600" : data.global.taux_global >= 70 ? "text-[#E8741A]" : "text-red-600"}`}>
+            {F(data.global.taux_global)}%
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">Objectif ≥ 90%</p>
+          <TrendArrow trend={tendances.find(t => t.key === "taux_livraison_global")} unit="pts" />
+        </div>
+
+        {/* SOC moyen réseau */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase">SOC Moyen Réseau</p>
+          <h3 className={`text-2xl font-bold font-mono ${averageSOC >= 80 ? "text-emerald-600" : averageSOC >= 60 ? "text-[#E8741A]" : "text-red-600"}`}>
+            {F(averageSOC)} <span className="text-xs text-slate-400">/100</span>
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">Taux 30% · Rapidité 20% · Encaiss. 50%</p>
+          <TrendArrow trend={tendances.find(t => t.key === "soc_moyen")} unit="pts" />
+        </div>
+
+        {/* Alertes actives */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase">Alertes Actives</p>
+          <h3 className={`text-2xl font-bold font-mono ${nbAlertes > 0 ? "text-red-600" : "text-emerald-600"}`}>
+            {N(nbAlertes)}
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">Livreurs sous les seuils configurés</p>
+          <span className="text-[10px] text-slate-400 font-sans">Voir le détail ci-dessous</span>
+        </div>
+
+        {/* Délai restitution COD moyen */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+            <RefreshCcw className="w-3 h-3" /> Restitution COD
+          </p>
+          <h3 className="text-2xl font-bold font-mono text-[#1B3A5C]">
+            {F(data.global.delai_restitution_cod_moy_h)}h
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">Encaissé → Versé à l'admin</p>
+          <TrendArrow trend={tendances.find(t => t.key === "delai_restitution_cod")} unit="h" inverse />
+        </div>
+
+        {/* Marge nette période */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+            <Wallet className="w-3 h-3" /> Marge Nette
+          </p>
+          <h3 className="text-2xl font-bold font-mono text-[#1B3A5C]">
+            {N(data.global.marge_nette_totale)}
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">DA, sur la période importée</p>
+          <TrendArrow trend={tendances.find(t => t.key === "marge_nette")} unit=" DA" />
+        </div>
+      </div>
+
       {/* 1. Bandeau "Spotlight" (fond dégradé navy glass) */}
       <div className="bg-gradient-to-r from-[#1B3A5C]/85 via-[#244C78]/85 to-[#1B3A5C]/85 backdrop-blur-md rounded-2xl p-6 text-white shadow-md relative overflow-hidden border border-white/10">
         {/* Glow Effet */}
@@ -642,6 +739,33 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
             <canvas ref={barChartRef}></canvas>
           </div>
         </div>
+      </div>
+
+      {/* NIVEAU 2 — Contexte : comparaison compacte avec la période précédente */}
+      <div className="glass-panel rounded-xl p-5">
+        <div className="mb-4 pb-3 border-b border-[#F0F3F8]">
+          <h4 className="font-bold text-[#1B3A5C] text-sm font-sans">Comparaison période précédente</h4>
+          <p className="text-[11px] text-[#6B7A99]">Écart avec le dernier import enregistré avant celui-ci</p>
+        </div>
+        {tendances.length === 0 ? (
+          <p className="text-xs text-slate-400 font-sans py-2">Pas encore d'historique pour comparer — importez à nouveau pour voir apparaître les tendances.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {TREND_LABELS.filter(t => tendances.some(tr => tr.key === t.key)).map(({ key, label, unit, inverse }) => {
+              const trend = tendances.find(tr => tr.key === key)!;
+              return (
+                <div key={key} className="border border-[#F0F3F8] rounded-lg p-3">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase truncate">{label}</p>
+                  <p className="text-sm font-bold font-mono text-[#1B3A5C] mt-0.5">
+                    {trend.valeurActuelle.toLocaleString("fr-DZ")}{unit}
+                    <span className="text-[10px] text-slate-400 font-normal ml-1">(était {trend.valeurPrecedente?.toLocaleString("fr-DZ")}{unit})</span>
+                  </p>
+                  <TrendArrow trend={trend} unit={unit} inverse={inverse} />
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 4. Mini tableaux (Top 10 Volume, Top 10 Retours, Top 10 Plus Lents) */}
