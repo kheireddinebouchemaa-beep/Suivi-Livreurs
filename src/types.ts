@@ -7,6 +7,9 @@ export interface GlobalKPIs {
   delai_moy: number;
   delai_encaiss_moy: number;
   non_livres: number;
+  lignes_fichier: number;           // nb total de lignes lues dans le fichier importé
+  lignes_ignorees_sans_livreur: number;   // lignes sans livreur assigné (non comptabilisées)
+  lignes_ignorees_sans_dispatch: number;  // lignes avec livreur mais jamais dispatchées (non comptabilisées)
 }
 
 export interface LivreurRecap {

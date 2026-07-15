@@ -182,6 +182,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   let stepIncrement = Math.max(1, Math.floor(totalLines / 40));
 
+  let skippedNoLivreur = 0;
+  let skippedNoDispatch = 0;
+
   for (let i = 0; i < totalLines; i++) {
     const row = rawRows[i];
     
@@ -193,6 +196,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     // Récupérer et normaliser les données du colis
     const liveurName = String(findKey(row, keysMapping.livreur) || "/").trim();
     if (!liveurName || liveurName === "/" || liveurName === "" || liveurName === "null") {
+      skippedNoLivreur++;
       continue; // Ignorer les colis sans livreur
     }
 
@@ -227,7 +231,8 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     // Le brief dit : "total_dispatches = nb de lignes avec 'Dispatché au livreur le' non vide"
     // Donc nous ne comptons que si dispatché est actif !
     if (!isDispatched) {
-      continue; 
+      skippedNoDispatch++;
+      continue;
     }
 
     // Calculs de délais
@@ -498,7 +503,10 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     taux_global,
     delai_moy,
     delai_encaiss_moy,
-    non_livres
+    non_livres,
+    lignes_fichier: totalLines,
+    lignes_ignorees_sans_livreur: skippedNoLivreur,
+    lignes_ignorees_sans_dispatch: skippedNoDispatch
   };
 
   onProgress?.(100);

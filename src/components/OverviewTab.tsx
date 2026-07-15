@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 import { AppData, LivreurRecap } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
-import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText } from "lucide-react";
+import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText, Info } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { exportOverviewExcel } from "../exportExcel";
 import { exportOverviewPdf } from "../exportPdf";
@@ -368,6 +368,23 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
           </div>
         </div>
       </div>
+
+      {/* Traçabilité de l'import : lignes du fichier vs lignes comptabilisées */}
+      {(data.global.lignes_ignorees_sans_livreur > 0 || data.global.lignes_ignorees_sans_dispatch > 0) && (
+        <div className="flex items-start gap-2 bg-slate-100/70 border border-slate-200 text-slate-600 rounded-xl px-4 py-2.5 text-[11px] leading-relaxed">
+          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>
+            <strong>{N(data.global.lignes_fichier)}</strong> lignes lues dans le fichier importé, dont{" "}
+            <strong>{N(data.global.total_dispatches)}</strong> comptabilisées comme "Dispatchés" (colis avec une date "Dispatché au livreur le").{" "}
+            {data.global.lignes_ignorees_sans_livreur > 0 && (
+              <>{N(data.global.lignes_ignorees_sans_livreur)} lignes ignorées sans livreur assigné. </>
+            )}
+            {data.global.lignes_ignorees_sans_dispatch > 0 && (
+              <>{N(data.global.lignes_ignorees_sans_dispatch)} lignes ignorées car jamais dispatchées (colis pas encore pris en charge).</>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* 2. Grille de 9 KPI cards (3x3) avec animations et bande de couleur en haut */}
       <motion.div 

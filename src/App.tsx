@@ -118,7 +118,11 @@ export default function App() {
     setFileName(importedFileName);
     setShowImportModal(false);
     setSelectedPage("overview");
-    triggerToast(`✅ ${newData.global.total_dispatches.toLocaleString('fr-DZ')} colis chargés avec succès ! Dashboard mis à jour.`, "success");
+    const skipped = newData.global.lignes_ignorees_sans_livreur + newData.global.lignes_ignorees_sans_dispatch;
+    const skippedNote = skipped > 0
+      ? ` (${skipped.toLocaleString('fr-DZ')} lignes ignorées : sans livreur ou jamais dispatchées — voir Vue d'ensemble)`
+      : "";
+    triggerToast(`✅ ${newData.global.total_dispatches.toLocaleString('fr-DZ')} colis chargés avec succès !${skippedNote}`, "success");
 
     try {
       await saveSnapshot(importedFileName, newData, "import");
