@@ -1,4 +1,4 @@
-import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs } from "./types";
+import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, SkippedRowExample } from "./types";
 import { getSOC, getScoreRapidite, getScoreEncaissement } from "./utils";
 
 // Fonction utilitaire pour parser les valeurs numériques
@@ -186,6 +186,30 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   let skippedNoDispatch = 0;
   const skippedNoLivreurByStatut: Record<string, number> = {};
   const skippedNoDispatchByStatut: Record<string, number> = {};
+  // Quelques lignes brutes conservées à titre d'exemple par (raison d'exclusion, statut),
+  // pour permettre d'inspecter concrètement ce que sont ces colis sans alourdir le résultat.
+  const MAX_EXAMPLES_PER_BUCKET = 25;
+  const skippedNoLivreurExamples: Record<string, SkippedRowExample[]> = {};
+  const skippedNoDispatchExamples: Record<string, SkippedRowExample[]> = {};
+
+  const buildExample = (row: any, statut: string): SkippedRowExample => ({
+    tracking: String(findKey(row, keysMapping.tracking) || "").trim(),
+    reference: String(findKey(row, keysMapping.reference) || "").trim(),
+    client: String(findKey(row, keysMapping.client) || "").trim(),
+    livreur: String(findKey(row, keysMapping.livreur) || "").trim(),
+    station: String(findKey(row, keysMapping.stationDest) || "").trim(),
+    expedieLe: String(findKey(row, keysMapping.expedieLe) || "").trim(),
+    livreLe: String(findKey(row, keysMapping.livreLe) || "").trim(),
+    montant: parseNumber(findKey(row, keysMapping.montant)),
+    statut,
+  });
+
+  const addExample = (bucket: Record<string, SkippedRowExample[]>, statut: string, row: any) => {
+    if (!bucket[statut]) bucket[statut] = [];
+    if (bucket[statut].length < MAX_EXAMPLES_PER_BUCKET) {
+      bucket[statut].push(buildExample(row, statut));
+    }
+  };
 
   for (let i = 0; i < totalLines; i++) {
     const row = rawRows[i];
@@ -203,6 +227,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     if (!liveurName || liveurName === "/" || liveurName === "" || liveurName === "null") {
       skippedNoLivreur++;
       skippedNoLivreurByStatut[statutBrut] = (skippedNoLivreurByStatut[statutBrut] || 0) + 1;
+      addExample(skippedNoLivreurExamples, statutBrut, row);
       continue; // Ignorer les colis sans livreur
     }
 
@@ -238,6 +263,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     if (!isDispatched) {
       skippedNoDispatch++;
       skippedNoDispatchByStatut[statutBrut] = (skippedNoDispatchByStatut[statutBrut] || 0) + 1;
+      addExample(skippedNoDispatchExamples, statutBrut, row);
       continue;
     }
 
@@ -501,9 +527,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   const totalDEnc = recap.reduce((s, x) => s + (x.delai_enc_h * x.livres), 0);
   const delai_encaiss_moy = total_livres > 0 ? parseFloat((totalDEnc / total_livres).toFixed(1)) : 0;
 
-  const toSortedBreakdown = (byStatut: Record<string, number>) =>
+  const toSortedBreakdown = (byStatut: Record<string, number>, examples: Record<string, SkippedRowExample[]>) =>
     Object.entries(byStatut)
-      .map(([statut, count]) => ({ statut, count }))
+      .map(([statut, count]) => ({ statut, count, examples: examples[statut] || [] }))
       .sort((a, b) => b.count - a.count);
 
   const global: GlobalKPIs = {
@@ -518,8 +544,8 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     lignes_fichier: totalLines,
     lignes_ignorees_sans_livreur: skippedNoLivreur,
     lignes_ignorees_sans_dispatch: skippedNoDispatch,
-    statuts_sans_livreur: toSortedBreakdown(skippedNoLivreurByStatut),
-    statuts_sans_dispatch: toSortedBreakdown(skippedNoDispatchByStatut)
+    statuts_sans_livreur: toSortedBreakdown(skippedNoLivreurByStatut, skippedNoLivreurExamples),
+    statuts_sans_dispatch: toSortedBreakdown(skippedNoDispatchByStatut, skippedNoDispatchExamples)
   };
 
   onProgress?.(100);

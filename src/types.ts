@@ -1,6 +1,19 @@
+export interface SkippedRowExample {
+  tracking: string;
+  reference: string;
+  client: string;
+  livreur: string;
+  station: string;
+  expedieLe: string;
+  livreLe: string;
+  montant: number;
+  statut: string;
+}
+
 export interface StatutBreakdown {
   statut: string;
   count: number;
+  examples: SkippedRowExample[]; // échantillon de lignes brutes (25 max) pour inspection
 }
 
 export interface GlobalKPIs {

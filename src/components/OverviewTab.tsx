@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
-import { AppData, LivreurRecap } from "../types";
+import { AppData, LivreurRecap, SkippedRowExample } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
 import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText, Info } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -53,6 +53,7 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
   const lineChartInstance = useRef<Chart | null>(null);
   const barChartInstance = useRef<Chart | null>(null);
   const [showSkippedDetail, setShowSkippedDetail] = useState(false);
+  const [examplesModal, setExamplesModal] = useState<{ label: string; rows: SkippedRowExample[] } | null>(null);
 
   // 1. Calculer la distribution du taux de livraison
   // Tranches : <50%, 50-60%, 60-70%, 70-80%, 80-90%, 90-95%, >95%
@@ -400,9 +401,17 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
                   </p>
                   <ul className="space-y-1">
                     {data.global.statuts_sans_livreur.map(s => (
-                      <li key={s.statut} className="flex justify-between">
-                        <span className="truncate pr-2">{s.statut}</span>
-                        <span className="font-mono font-bold text-[#1B3A5C]">{N(s.count)}</span>
+                      <li key={s.statut}>
+                        <button
+                          onClick={() => s.examples.length > 0 && setExamplesModal({ label: `Sans livreur assigné — ${s.statut}`, rows: s.examples })}
+                          disabled={s.examples.length === 0}
+                          className="w-full flex justify-between items-center hover:bg-slate-100 rounded px-1 -mx-1 py-0.5 disabled:cursor-default cursor-pointer transition-colors"
+                        >
+                          <span className="truncate pr-2 text-left">
+                            {s.statut} {s.examples.length > 0 && <span className="text-[#1B3A5C] underline">(voir exemples)</span>}
+                          </span>
+                          <span className="font-mono font-bold text-[#1B3A5C] flex-shrink-0">{N(s.count)}</span>
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -415,9 +424,17 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
                   </p>
                   <ul className="space-y-1">
                     {data.global.statuts_sans_dispatch.map(s => (
-                      <li key={s.statut} className="flex justify-between">
-                        <span className="truncate pr-2">{s.statut}</span>
-                        <span className="font-mono font-bold text-[#1B3A5C]">{N(s.count)}</span>
+                      <li key={s.statut}>
+                        <button
+                          onClick={() => s.examples.length > 0 && setExamplesModal({ label: `Jamais dispatchées — ${s.statut}`, rows: s.examples })}
+                          disabled={s.examples.length === 0}
+                          className="w-full flex justify-between items-center hover:bg-slate-100 rounded px-1 -mx-1 py-0.5 disabled:cursor-default cursor-pointer transition-colors"
+                        >
+                          <span className="truncate pr-2 text-left">
+                            {s.statut} {s.examples.length > 0 && <span className="text-[#1B3A5C] underline">(voir exemples)</span>}
+                          </span>
+                          <span className="font-mono font-bold text-[#1B3A5C] flex-shrink-0">{N(s.count)}</span>
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -730,6 +747,63 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-xs font-semibold font-sans">{localToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modale d'exemples de lignes brutes ignorées */}
+      <AnimatePresence>
+        {examplesModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-[#1B3A5C]/30 backdrop-blur-md flex items-center justify-center z-50 p-4"
+            onClick={() => setExamplesModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="bg-[#1B3A5C] text-white px-4 py-3 flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h3 className="font-bold text-sm">{examplesModal.label}</h3>
+                  <p className="text-[10px] text-slate-300">Échantillon de {examplesModal.rows.length} lignes brutes du fichier importé</p>
+                </div>
+                <button onClick={() => setExamplesModal(null)} className="text-white/80 hover:text-white p-1 hover:bg-white/10 rounded cursor-pointer">✕</button>
+              </div>
+              <div className="overflow-auto flex-1 custom-scrollbar">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-slate-100 sticky top-0">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Tracking</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Client</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livreur</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Station</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Expédié le</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livré le</th>
+                      <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Montant</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {examplesModal.rows.map((r, i) => (
+                      <tr key={i} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="px-3 py-1.5 font-mono">{r.tracking || "–"}</td>
+                        <td className="px-3 py-1.5">{r.client || "–"}</td>
+                        <td className="px-3 py-1.5">{r.livreur || "–"}</td>
+                        <td className="px-3 py-1.5">{r.station || "–"}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.expedieLe || "–"}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.livreLe || "–"}</td>
+                        <td className="px-3 py-1.5 text-right font-mono">{r.montant ? N(r.montant) : "–"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
