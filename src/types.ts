@@ -128,12 +128,6 @@ export interface BreakdownRow {
   taux_retour: number;
 }
 
-export interface LivreurDetail {
-  livreurId: string;         // correspond à LivreurRecap.id
-  parExpediteur: BreakdownRow[];  // triée dispatches desc
-  parZone: BreakdownRow[];        // triée dispatches desc
-}
-
 export interface ExpediteurRecap {
   id: string;
   expediteur: string;
@@ -175,7 +169,6 @@ export interface AppData {
   by_station: StationRecap[];
   expediteurs: ExpediteurRecap[];
   zones: ZoneRecap[];
-  livreurDetails: Record<string, LivreurDetail>;  // clé = LivreurRecap.id
   tendances?: KpiTrend[];         // calculé côté frontend au chargement, pas dans parser.ts
   resumeNaturel?: string;         // phrase auto-générée
 }

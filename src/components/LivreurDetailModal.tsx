@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Search, Loader2, AlertCircle, X, Package, Store, MapPin } from "lucide-react";
-import { queryRawRows } from "../lib/api";
-import { LivreurRecap, FlatRow, LivreurDetail, BreakdownRow } from "../types";
+import { queryRawRows, queryBreakdown } from "../lib/api";
+import { LivreurRecap, FlatRow, BreakdownRow } from "../types";
 import { N, P } from "../utils";
 
 interface LivreurDetailModalProps {
   snapshotId: string | null;
   livreur: LivreurRecap;
-  detail: LivreurDetail | undefined;
   onClose: () => void;
 }
 
@@ -58,7 +57,7 @@ function BreakdownTable({ rows, groupLabel, showWilaya }: { rows: BreakdownRow[]
   );
 }
 
-export default function LivreurDetailModal({ snapshotId, livreur, detail, onClose }: LivreurDetailModalProps) {
+export default function LivreurDetailModal({ snapshotId, livreur, onClose }: LivreurDetailModalProps) {
   const [tab, setTab] = useState<Tab>("colis");
   const [statusChip, setStatusChip] = useState<StatusChip>("tous");
   const [search, setSearch] = useState("");
@@ -67,6 +66,31 @@ export default function LivreurDetailModal({ snapshotId, livreur, detail, onClos
   const [total, setTotal] = useState(0);
   const [rowsLoading, setRowsLoading] = useState(true);
   const [rowsError, setRowsError] = useState<string | null>(null);
+
+  // Répartition par expéditeur / par zone (onglets dédiés) — calculée côté serveur à la
+  // demande depuis le détail ligne par ligne, plutôt qu'embarquée dans le snapshot.
+  const [breakdownRows, setBreakdownRows] = useState<BreakdownRow[]>([]);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [breakdownError, setBreakdownError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!snapshotId || (tab !== "expediteurs" && tab !== "communes")) return;
+    let cancelled = false;
+    setBreakdownLoading(true);
+    setBreakdownError(null);
+    queryBreakdown(snapshotId, livreur.livreur, livreur.station, tab === "expediteurs" ? "expediteur" : "zone")
+      .then((res) => {
+        if (cancelled) return;
+        setBreakdownRows(res.rows);
+      })
+      .catch((err: any) => {
+        if (!cancelled) setBreakdownError(err?.message || "Erreur lors du chargement.");
+      })
+      .finally(() => {
+        if (!cancelled) setBreakdownLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [snapshotId, tab, livreur.livreur, livreur.station]);
 
   // Liste des colis (onglet "Colis") — recherche côté serveur sur le détail ligne par ligne
   useEffect(() => {
@@ -157,14 +181,31 @@ export default function LivreurDetailModal({ snapshotId, livreur, detail, onClos
           ))}
         </div>
 
-        {tab === "expediteurs" ? (
-          <div className="overflow-auto flex-1 custom-scrollbar">
-            <BreakdownTable rows={detail?.parExpediteur || []} groupLabel="Expéditeur" showWilaya={false} />
-          </div>
-        ) : tab === "communes" ? (
-          <div className="overflow-auto flex-1 custom-scrollbar">
-            <BreakdownTable rows={detail?.parZone || []} groupLabel="Commune" showWilaya />
-          </div>
+        {tab === "expediteurs" || tab === "communes" ? (
+          !snapshotId ? (
+            <div className="p-6 flex items-start gap-2 text-slate-600 text-xs">
+              <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p>Le détail ligne par ligne n'a pas été sauvegardé pour cet import (import réalisé avant l'ajout de cette fonctionnalité, ou sauvegarde du détail échouée). Réimportez le fichier pour en bénéficier.</p>
+            </div>
+          ) : breakdownError ? (
+            <div className="p-6 flex items-start gap-2 text-red-700 text-xs">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <p>{breakdownError}</p>
+            </div>
+          ) : (
+            <div className="overflow-auto flex-1 custom-scrollbar relative">
+              {breakdownLoading && (
+                <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
+                  <Loader2 className="w-5 h-5 text-[#E8741A] animate-spin" />
+                </div>
+              )}
+              <BreakdownTable
+                rows={breakdownRows}
+                groupLabel={tab === "expediteurs" ? "Expéditeur" : "Commune"}
+                showWilaya={tab === "communes"}
+              />
+            </div>
+          )
         ) : !snapshotId ? (
           <div className="p-6 flex items-start gap-2 text-slate-600 text-xs">
             <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />

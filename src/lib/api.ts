@@ -1,4 +1,4 @@
-import { AppData, FlatRow } from "../types";
+import { AppData, FlatRow, BreakdownRow } from "../types";
 
 async function apiFetch(path: string, options: RequestInit = {}) {
   const res = await fetch(path, {
@@ -82,6 +82,11 @@ export function queryRawRows(snapshotId: string, filter: RawRowsFilter) {
     if (v !== undefined && v !== null && v !== "") params.set(k, String(v));
   });
   return apiFetch(`/api/snapshots/${snapshotId}/raw-rows?${params.toString()}`) as Promise<RawRowsResult>;
+}
+
+export function queryBreakdown(snapshotId: string, livreur: string, station: string, groupBy: "expediteur" | "zone") {
+  const params = new URLSearchParams({ livreur, station, groupBy });
+  return apiFetch(`/api/snapshots/${snapshotId}/breakdown?${params.toString()}`) as Promise<{ rows: BreakdownRow[] }>;
 }
 
 export interface Threshold {

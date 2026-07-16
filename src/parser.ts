@@ -1,4 +1,4 @@
-import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, SkippedRowExample, FlatRow, BreakdownRow, LivreurDetail, ExpediteurRecap, ZoneRecap } from "./types";
+import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, SkippedRowExample, FlatRow, ExpediteurRecap, ZoneRecap } from "./types";
 import { getSOC, getScoreRapidite, getScoreEncaissement } from "./utils";
 
 // Fonction utilitaire pour parser les valeurs numériques
@@ -187,10 +187,12 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   // Nb de colis par jour et par station, pour l'écart-type de charge journalière (équilibrage)
   const stationDailyMap: Record<string, Record<string, number>> = {};
 
-  // Détail expéditeur/zone par livreur (Volet A) + agrégats réseau (Volets B/C)
+  // Agrégats réseau par expéditeur / par zone (Volets B/C). Le détail par livreur ×
+  // expéditeur/zone (Volet A) n'est plus embarqué ici : pour un gros import (500k+ lignes,
+  // 900+ livreurs) il ferait exploser la taille du JSON envoyé au backend au-delà de la
+  // limite de la plateforme. Il est désormais calculé à la demande côté serveur
+  // (GET /api/snapshots/:id/breakdown) depuis le détail ligne par ligne déjà sauvegardé.
   type SubCounts = { dispatches: number; livres: number; retours: number };
-  const expediteurByLivreur: Record<string, Record<string, SubCounts>> = {};
-  const zoneByLivreur: Record<string, Record<string, { commune: string; wilaya: string } & SubCounts>> = {};
   const globalExpediteurMap: Record<string, SubCounts & { livreursSet: Set<string>; communesSet: Set<string>; montantLivreTotal: number }> = {};
   const globalZoneMap: Record<string, { commune: string; wilaya: string } & SubCounts> = {};
 
@@ -375,23 +377,11 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       liveRecord.retours += 1;
     }
 
-    // Détail par expéditeur / zone, pour ce livreur et au niveau réseau
+    // Agrégats réseau par expéditeur / par zone
     const expediteurStr = String(findKey(row, keysMapping.expediteur) || "").trim() || "(non renseigné)";
     const communeLabel = communeStr || "(non renseignée)";
     const wilayaLabel = wilayaStr || "(non renseignée)";
     const zoneKey = `${communeLabel}||${wilayaLabel}`;
-
-    if (!expediteurByLivreur[livreurKey]) expediteurByLivreur[livreurKey] = {};
-    const expLiv = expediteurByLivreur[livreurKey][expediteurStr] ||= { dispatches: 0, livres: 0, retours: 0 };
-    expLiv.dispatches += 1;
-    if (isLivred) expLiv.livres += 1;
-    if (isRetour) expLiv.retours += 1;
-
-    if (!zoneByLivreur[livreurKey]) zoneByLivreur[livreurKey] = {};
-    const zoneLiv = zoneByLivreur[livreurKey][zoneKey] ||= { commune: communeLabel, wilaya: wilayaLabel, dispatches: 0, livres: 0, retours: 0 };
-    zoneLiv.dispatches += 1;
-    if (isLivred) zoneLiv.livres += 1;
-    if (isRetour) zoneLiv.retours += 1;
 
     const gExp = globalExpediteurMap[expediteurStr] ||= { dispatches: 0, livres: 0, retours: 0, livreursSet: new Set<string>(), communesSet: new Set<string>(), montantLivreTotal: 0 };
     gExp.dispatches += 1;
@@ -536,26 +526,6 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     }
   });
 
-  const breakdownRates = (v: SubCounts) => ({
-    dispatches: v.dispatches,
-    livres: v.livres,
-    retours: v.retours,
-    taux_livraison: v.dispatches > 0 ? parseFloat(((v.livres / v.dispatches) * 100).toFixed(1)) : 0,
-    taux_retour: v.dispatches > 0 ? parseFloat(((v.retours / v.dispatches) * 100).toFixed(1)) : 0,
-  });
-
-  const toExpediteurRows = (entries: Record<string, SubCounts>): BreakdownRow[] =>
-    Object.entries(entries)
-      .map(([key, v]) => ({ key, label: key, ...breakdownRates(v) }))
-      .sort((a, b) => b.dispatches - a.dispatches);
-
-  const toZoneRows = (entries: Record<string, { commune: string; wilaya: string } & SubCounts>): BreakdownRow[] =>
-    Object.entries(entries)
-      .map(([key, v]) => ({ key, label: v.commune, wilaya: v.wilaya, ...breakdownRates(v) }))
-      .sort((a, b) => b.dispatches - a.dispatches);
-
-  const livreurDetails: Record<string, LivreurDetail> = {};
-
   // Formater les livreurs
   const recap: LivreurRecap[] = Object.keys(aggregatedLivreurs).map((k, idx) => {
     const s = aggregatedLivreurs[k];
@@ -594,12 +564,6 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const ecart_type_charge_jour = stationStdDev[s.station] || 0;
 
     const id = `LIV-${1000 + idx}`;
-
-    livreurDetails[id] = {
-      livreurId: id,
-      parExpediteur: toExpediteurRows(expediteurByLivreur[k] || {}),
-      parZone: toZoneRows(zoneByLivreur[k] || {}),
-    };
 
     return {
       id,
@@ -794,8 +758,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       trend,
       by_station,
       expediteurs,
-      zones,
-      livreurDetails
+      zones
     },
     flatRows
   };

@@ -170,6 +170,47 @@ app.get("/api/snapshots/:id/raw-rows", async (req, res) => {
   });
 });
 
+// ── Répartition par expéditeur ou par commune pour un livreur donné ──
+// Calculée à la volée depuis snapshot_rows (via une fonction Postgres) plutôt que d'être
+// embarquée dans le payload du snapshot : pour un gros import (500k+ lignes / 900+ livreurs),
+// le détail par livreur × expéditeur/zone ferait exploser la taille du JSON envoyé à
+// POST /api/snapshots au-delà de la limite de la plateforme, faisant échouer la sauvegarde.
+app.get("/api/snapshots/:id/breakdown", async (req, res) => {
+  const livreur = String(req.query.livreur || "");
+  const station = String(req.query.station || "");
+  const groupBy = req.query.groupBy === "zone" ? "zone" : "expediteur";
+  if (!livreur || !station) {
+    return res.status(400).json({ error: "livreur et station sont requis." });
+  }
+
+  const { data, error } = await supabase.rpc("snapshot_rows_breakdown", {
+    p_snapshot_id: req.params.id,
+    p_livreur: livreur,
+    p_station: station,
+    p_group_by: groupBy,
+  });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const rows = (data || []).map((r: any) => {
+    const dispatches = Number(r.dispatches) || 0;
+    const livres = Number(r.livres) || 0;
+    const retours = Number(r.retours) || 0;
+    return {
+      key: r.label,
+      label: r.label,
+      wilaya: r.wilaya || "",
+      dispatches,
+      livres,
+      retours,
+      taux_livraison: dispatches > 0 ? parseFloat(((livres / dispatches) * 100).toFixed(1)) : 0,
+      taux_retour: dispatches > 0 ? parseFloat(((retours / dispatches) * 100).toFixed(1)) : 0,
+    };
+  });
+
+  res.json({ rows });
+});
+
 // ── Seuils d'alerte ─────────────────────────────────────────
 app.get("/api/thresholds", async (_req, res) => {
   const { data, error } = await supabase.from("alert_thresholds").select("*");

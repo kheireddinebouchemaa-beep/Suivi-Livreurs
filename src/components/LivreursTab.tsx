@@ -595,7 +595,6 @@ export default function LivreursTab({ data, snapshotId }: LivreursTabProps) {
           <LivreurDetailModal
             snapshotId={snapshotId}
             livreur={detailLivreur}
-            detail={data.livreurDetails[detailLivreur.id]}
             onClose={() => setDetailLivreur(null)}
           />
         )}
