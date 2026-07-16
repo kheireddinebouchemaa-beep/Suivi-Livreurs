@@ -350,228 +350,285 @@ export default function LivreursTab({ data, snapshotId }: LivreursTabProps) {
         </div>
       </div>
 
-      {/* 2. Tableau scrollable - 22 colonnes */}
-      <div className="border border-white/20 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto custom-scrollbar max-h-[600px]">
-          <table className="w-full text-left border-collapse min-w-[2350px] text-xs font-sans">
-            <thead className="bg-[#1B3A5C]/85 backdrop-blur-md text-white font-semibold sticky top-0 z-10 shadow-xs">
-              <tr>
-                <th className="px-3 py-3 w-12 text-center select-none">#</th>
-                <th className="px-4 py-3 min-w-[180px] cursor-pointer select-none" onClick={() => handleSort("livreur")}>
-                  <div className="flex items-center">Livreur {renderSortIndicator("livreur")}</div>
-                </th>
-                <th className="px-4 py-3 min-w-[180px] cursor-pointer select-none" onClick={() => handleSort("station")}>
-                  <div className="flex items-center">Station {renderSortIndicator("station")}</div>
-                </th>
-                <th className="px-3 py-3 w-28 cursor-pointer text-center select-none" onClick={() => handleSort("taux_livraison")}>
-                  <div className="flex items-center justify-center">Performance {renderSortIndicator("taux_livraison")}</div>
-                </th>
-                <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("dispatches")}>
-                  <div className="flex items-center justify-end">Dispatchs {renderSortIndicator("dispatches")}</div>
-                </th>
-                <th className="px-4 py-3 min-w-[150px] cursor-pointer select-none" onClick={() => handleSort("livres")}>
-                  <div className="flex items-center">Livrés (Minibar) {renderSortIndicator("livres")}</div>
-                </th>
-                <th className="px-3 py-3 w-28 cursor-pointer text-center select-none" onClick={() => handleSort("taux_livraison")}>
-                  <div className="flex items-center justify-center">Tx Livr. % {renderSortIndicator("taux_livraison")}</div>
-                </th>
-                <th className="px-3 py-3 w-32 cursor-pointer text-center select-none bg-indigo-900/40 border-l border-indigo-200/20" onClick={() => handleSort("soc")}>
-                  <div className="flex items-center justify-center font-bold text-indigo-200">📊 SOC {renderSortIndicator("soc")}</div>
-                </th>
-                <th className="px-3 py-3 w-20 cursor-pointer text-right select-none" onClick={() => handleSort("retours")}>
-                  <div className="flex items-center justify-end">Retours {renderSortIndicator("retours")}</div>
-                </th>
-                <th className="px-3 py-3 w-28 cursor-pointer text-center select-none" onClick={() => handleSort("taux_retour")}>
-                  <div className="flex items-center justify-center">Tx Ret. % {renderSortIndicator("taux_retour")}</div>
-                </th>
-                <th className="px-3 py-3 w-28 cursor-pointer text-right select-none" onClick={() => handleSort("delai_moy_h")}>
-                  <div className="flex items-center justify-end">Délai Disp.(h) {renderSortIndicator("delai_moy_h")}</div>
-                </th>
-                <th className="px-3 py-3 w-28 cursor-pointer text-right select-none" onClick={() => handleSort("delai_fdr_h")}>
-                  <div className="flex items-center justify-end">Délai FDR(h) {renderSortIndicator("delai_fdr_h")}</div>
-                </th>
-                <th className="px-3 py-3 w-28 cursor-pointer text-right select-none" onClick={() => handleSort("delai_enc_h")}>
-                  <div className="flex items-center justify-end">Délai Enc.(h) {renderSortIndicator("delai_enc_h")}</div>
-                </th>
-                <th className="px-3 py-3 w-20 cursor-pointer text-right select-none" onClick={() => handleSort("jours_actifs")}>
-                  <div className="flex items-center justify-end">J. Actifs {renderSortIndicator("jours_actifs")}</div>
-                </th>
-                <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("moy_colis_jour")}>
-                  <div className="flex items-center justify-end">Moy./Jour {renderSortIndicator("moy_colis_jour")}</div>
-                </th>
-                <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("domicile")}>
-                  <div className="flex items-center justify-end">Domicile {renderSortIndicator("domicile")}</div>
-                </th>
-                <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("stop_desk")}>
-                  <div className="flex items-center justify-end">Stop Desk {renderSortIndicator("stop_desk")}</div>
-                </th>
-                <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("echanges")}>
-                  <div className="flex items-center justify-end">Échanges {renderSortIndicator("echanges")}</div>
-                </th>
-                <th className="px-3 py-3 w-20 cursor-pointer text-right select-none" onClick={() => handleSort("wilayas")}>
-                  <div className="flex items-center justify-end">Wilayas {renderSortIndicator("wilayas")}</div>
-                </th>
-                <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("communes")}>
-                  <div className="flex items-center justify-end">Communes {renderSortIndicator("communes")}</div>
-                </th>
-                <th className="px-4 py-3 min-w-[120px] cursor-pointer text-right select-none" onClick={() => handleSort("remun")}>
-                  <div className="flex items-center justify-end">Rémun.(DA) {renderSortIndicator("remun")}</div>
-                </th>
-                <th className="px-4 py-3 min-w-[150px] cursor-pointer text-right select-none" onClick={() => handleSort("montant_enc")}>
-                  <div className="flex items-center justify-end">Montant Enc. {renderSortIndicator("montant_enc")}</div>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#DDE3EE]/60 text-slate-800 font-medium">
-              {sortedAndFilteredData.map((l, index) => {
-                // Déterminer la couleur de la ligne selon la spécification
-                // "Couleur ligne : vert pâle si ≥90%, rouge pâle si <60%"
-                let rowBg = "hover:bg-slate-50/70 transition-colors";
-                if (l.taux_livraison >= 90) {
-                  rowBg = "bg-emerald-50/30 hover:bg-emerald-50/50 transition-colors";
-                } else if (l.taux_livraison < 60) {
-                  rowBg = "bg-red-50/30 hover:bg-red-50/50 transition-colors";
-                }
-
-                // Volume max pour calculer le % d'occupation de la minibar
-                const percentVolume = l.dispatches > 0 ? (l.livres / l.dispatches) * 100 : 0;
-
-                // Animation désactivée si prefersReduced ou index >= 50 pour performance
-                const animateRow = !prefersReduced && index < 50;
-
-                return (
-                  <motion.tr
-                    key={l.id}
-                    className={`${rowBg} cursor-pointer`}
-                    onClick={() => setDetailLivreur(l)}
-                    title="Voir la fiche détaillée (colis, expéditeurs, communes)"
-                    initial={animateRow ? { opacity: 0, x: -8 } : false}
-                    animate={animateRow ? { opacity: 1, x: 0 } : false}
-                    transition={animateRow ? { delay: index * 0.015, duration: 0.25 } : undefined}
-                  >
-                    {/* Index / Rang */}
-                    <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-400">
-                      {index + 1}
-                    </td>
-                    {/* Nom livreur */}
-                    <td className="px-4 py-2.5 font-bold text-[#1B3A5C] truncate max-w-[180px] underline decoration-dotted decoration-slate-300 underline-offset-2">
-                      {l.livreur}
-                    </td>
-                    {/* Station */}
-                    <td className="px-4 py-2.5 font-medium text-slate-600 truncate max-w-[180px]">
-                      {l.station}
-                    </td>
-                    {/* Badge Performance */}
-                    <td className="px-3 py-2.5 text-center">
-                      {renderPerfBadge(l.taux_livraison)}
-                    </td>
-                    {/* Total dispatchés */}
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1B3A5C]">
-                      {N(l.dispatches)}
-                    </td>
-                    {/* Livrés (Mini barre de progression) */}
-                    <td className="px-4 py-2.5 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-mono font-bold text-emerald-600 w-10 text-right">{N(l.livres)}</span>
-                        <div className="w-20 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                          <div 
-                            className="bg-emerald-500 h-1.5 rounded-full" 
-                            style={{ width: `${percentVolume}%` }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-                    {/* Taux livraison */}
-                    <td className={`px-3 py-2.5 text-center ${getTauxDeliveryStyle(l.taux_livraison)}`}>
-                      {P(l.taux_livraison)}
-                    </td>
-                    {/* SOC Composite with tricolore progress indicator and clear breakdown tooltip on hover */}
-                    <td 
-                      className="px-3 py-2 bg-indigo-50/5 border-l border-indigo-200/10 text-center"
-                      title={`Taux Livraison : ${l.soc_taux.toFixed(1)}/30 · Rapidité : ${l.soc_rapidite.toFixed(1)}/20 · Encaissement : ${l.soc_enc.toFixed(1)}/50`}
-                    >
-                      <div className="flex flex-col items-center justify-center space-y-1">
-                        <span className={`font-mono font-bold ${getSOCStyle(l.soc)} text-xs`}>
-                          {l.soc.toFixed(1)}
-                        </span>
-                        <div className="flex h-1 w-16 rounded-full overflow-hidden bg-slate-200 border border-slate-300/30">
-                          <div style={{ width: `${(l.soc_taux / 30) * 100}%` }} className="bg-indigo-600 h-full" />
-                          <div style={{ width: `${(l.soc_rapidite / 20) * 100}%` }} className="bg-amber-500 h-full" />
-                          <div style={{ width: `${(l.soc_enc / 50) * 100}%` }} className="bg-emerald-500 h-full" />
-                        </div>
-                      </div>
-                    </td>
-                    {/* Retours */}
-                    <td className="px-3 py-2.5 text-right font-mono text-red-600">
-                      {N(l.retours)}
-                    </td>
-                    {/* Taux retour */}
-                    <td className={`px-3 py-2.5 text-center ${getTauxRetourStyle(l.taux_retour)}`}>
-                      {P(l.taux_retour)}
-                    </td>
-                    {/* Délai Disp */}
-                    <td className={`px-3 py-2.5 text-right ${getDelaiStyle(l.delai_moy_h)}`}>
-                      {l.delai_moy_h > 0 ? `${F(l.delai_moy_h)}h` : "–"}
-                    </td>
-                    {/* Délai FDR */}
-                    <td className={`px-3 py-2.5 text-right ${getDelaiStyle(l.delai_fdr_h)}`}>
-                      {l.delai_fdr_h > 0 ? `${F(l.delai_fdr_h)}h` : "–"}
-                    </td>
-                    {/* Délai Enc */}
-                    <td className={`px-3 py-2.5 text-right ${getDelaiStyle(l.delai_enc_h)}`}>
-                      {l.delai_enc_h > 0 ? `${F(l.delai_enc_h)}h` : "–"}
-                    </td>
-                    {/* Jours actifs */}
-                    <td className="px-3 py-2.5 text-right font-mono text-slate-500">
-                      {N(l.jours_actifs)}
-                    </td>
-                    {/* Moy Colis/Jour */}
-                    <td className="px-3 py-2.5 text-right font-mono text-[#1B3A5C]">
-                      {F(l.moy_colis_jour)}
-                    </td>
-                    {/* Domicile */}
-                    <td className="px-3 py-2.5 text-right font-mono text-slate-500">
-                      {N(l.domicile)}
-                    </td>
-                    {/* Stop desk */}
-                    <td className="px-3 py-2.5 text-right font-mono text-slate-500">
-                      {N(l.stop_desk)}
-                    </td>
-                    {/* Echanges */}
-                    <td className="px-3 py-2.5 text-right font-mono text-amber-600">
-                      {N(l.echanges)}
-                    </td>
-                    {/* Wilayas */}
-                    <td className="px-3 py-2.5 text-right font-mono text-slate-500">
-                      {N(l.wilayas)}
-                    </td>
-                    {/* Communes */}
-                    <td className="px-3 py-2.5 text-right font-mono text-slate-500">
-                      {N(l.communes)}
-                    </td>
-                    {/* Rémunération */}
-                    <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-700">
-                      {N(l.remun)} <span className="text-[9px] font-medium text-slate-400">DA</span>
-                    </td>
-                    {/* Montant encaissé */}
-                    <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-700">
-                      {N(l.montant_enc)} <span className="text-[9px] font-medium text-slate-400">DA</span>
-                    </td>
-                  </motion.tr>
-                );
-              })}
-
-              {sortedAndFilteredData.length === 0 && (
+      {/* 2a. Tableau 1/2 : identité et performance */}
+      <div>
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Identité &amp; Performance</p>
+        <div className="border border-white/20 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto custom-scrollbar max-h-[600px]">
+            <table className="w-full text-left border-collapse min-w-[1100px] text-xs font-sans">
+              <thead className="bg-[#1B3A5C]/85 backdrop-blur-md text-white font-semibold sticky top-0 z-10 shadow-xs">
                 <tr>
-                  <td colSpan={21} className="py-8 text-center text-slate-450 font-semibold text-slate-500 font-sans">
-                    🚫 Aucun livreur ne correspond aux filtres de recherche. Veuillez réinitialiser les filtres.
-                  </td>
+                  <th className="px-3 py-3 w-12 text-center select-none">#</th>
+                  <th className="px-4 py-3 min-w-[180px] cursor-pointer select-none" onClick={() => handleSort("livreur")}>
+                    <div className="flex items-center">Livreur {renderSortIndicator("livreur")}</div>
+                  </th>
+                  <th className="px-4 py-3 min-w-[180px] cursor-pointer select-none" onClick={() => handleSort("station")}>
+                    <div className="flex items-center">Station {renderSortIndicator("station")}</div>
+                  </th>
+                  <th className="px-3 py-3 w-28 cursor-pointer text-center select-none" onClick={() => handleSort("taux_livraison")}>
+                    <div className="flex items-center justify-center">Performance {renderSortIndicator("taux_livraison")}</div>
+                  </th>
+                  <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("dispatches")}>
+                    <div className="flex items-center justify-end">Dispatchs {renderSortIndicator("dispatches")}</div>
+                  </th>
+                  <th className="px-4 py-3 min-w-[150px] cursor-pointer select-none" onClick={() => handleSort("livres")}>
+                    <div className="flex items-center">Livrés (Minibar) {renderSortIndicator("livres")}</div>
+                  </th>
+                  <th className="px-3 py-3 w-28 cursor-pointer text-center select-none" onClick={() => handleSort("taux_livraison")}>
+                    <div className="flex items-center justify-center">Tx Livr. % {renderSortIndicator("taux_livraison")}</div>
+                  </th>
+                  <th className="px-3 py-3 w-32 cursor-pointer text-center select-none bg-indigo-900/40 border-l border-indigo-200/20" onClick={() => handleSort("soc")}>
+                    <div className="flex items-center justify-center font-bold text-indigo-200">📊 SOC {renderSortIndicator("soc")}</div>
+                  </th>
+                  <th className="px-3 py-3 w-20 cursor-pointer text-right select-none" onClick={() => handleSort("retours")}>
+                    <div className="flex items-center justify-end">Retours {renderSortIndicator("retours")}</div>
+                  </th>
+                  <th className="px-3 py-3 w-28 cursor-pointer text-center select-none" onClick={() => handleSort("taux_retour")}>
+                    <div className="flex items-center justify-center">Tx Ret. % {renderSortIndicator("taux_retour")}</div>
+                  </th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[#DDE3EE]/60 text-slate-800 font-medium">
+                {sortedAndFilteredData.map((l, index) => {
+                  // Déterminer la couleur de la ligne selon la spécification
+                  // "Couleur ligne : vert pâle si ≥90%, rouge pâle si <60%"
+                  let rowBg = "hover:bg-slate-50/70 transition-colors";
+                  if (l.taux_livraison >= 90) {
+                    rowBg = "bg-emerald-50/30 hover:bg-emerald-50/50 transition-colors";
+                  } else if (l.taux_livraison < 60) {
+                    rowBg = "bg-red-50/30 hover:bg-red-50/50 transition-colors";
+                  }
+
+                  // Volume max pour calculer le % d'occupation de la minibar
+                  const percentVolume = l.dispatches > 0 ? (l.livres / l.dispatches) * 100 : 0;
+
+                  // Animation désactivée si prefersReduced ou index >= 50 pour performance
+                  const animateRow = !prefersReduced && index < 50;
+
+                  return (
+                    <motion.tr
+                      key={l.id}
+                      className={`${rowBg} cursor-pointer`}
+                      onClick={() => setDetailLivreur(l)}
+                      title="Voir la fiche détaillée (colis, expéditeurs, communes)"
+                      initial={animateRow ? { opacity: 0, x: -8 } : false}
+                      animate={animateRow ? { opacity: 1, x: 0 } : false}
+                      transition={animateRow ? { delay: index * 0.015, duration: 0.25 } : undefined}
+                    >
+                      {/* Index / Rang */}
+                      <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-400">
+                        {index + 1}
+                      </td>
+                      {/* Nom livreur */}
+                      <td className="px-4 py-2.5 font-bold text-[#1B3A5C] truncate max-w-[180px] underline decoration-dotted decoration-slate-300 underline-offset-2">
+                        {l.livreur}
+                      </td>
+                      {/* Station */}
+                      <td className="px-4 py-2.5 font-medium text-slate-600 truncate max-w-[180px]">
+                        {l.station}
+                      </td>
+                      {/* Badge Performance */}
+                      <td className="px-3 py-2.5 text-center">
+                        {renderPerfBadge(l.taux_livraison)}
+                      </td>
+                      {/* Total dispatchés */}
+                      <td className="px-3 py-2.5 text-right font-mono text-[#1B3A5C]">
+                        {N(l.dispatches)}
+                      </td>
+                      {/* Livrés (Mini barre de progression) */}
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-mono font-bold text-emerald-600 w-10 text-right">{N(l.livres)}</span>
+                          <div className="w-20 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="bg-emerald-500 h-1.5 rounded-full"
+                              style={{ width: `${percentVolume}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      {/* Taux livraison */}
+                      <td className={`px-3 py-2.5 text-center ${getTauxDeliveryStyle(l.taux_livraison)}`}>
+                        {P(l.taux_livraison)}
+                      </td>
+                      {/* SOC Composite with tricolore progress indicator and clear breakdown tooltip on hover */}
+                      <td
+                        className="px-3 py-2 bg-indigo-50/5 border-l border-indigo-200/10 text-center"
+                        title={`Taux Livraison : ${l.soc_taux.toFixed(1)}/30 · Rapidité : ${l.soc_rapidite.toFixed(1)}/20 · Encaissement : ${l.soc_enc.toFixed(1)}/50`}
+                      >
+                        <div className="flex flex-col items-center justify-center space-y-1">
+                          <span className={`font-mono font-bold ${getSOCStyle(l.soc)} text-xs`}>
+                            {l.soc.toFixed(1)}
+                          </span>
+                          <div className="flex h-1 w-16 rounded-full overflow-hidden bg-slate-200 border border-slate-300/30">
+                            <div style={{ width: `${(l.soc_taux / 30) * 100}%` }} className="bg-indigo-600 h-full" />
+                            <div style={{ width: `${(l.soc_rapidite / 20) * 100}%` }} className="bg-amber-500 h-full" />
+                            <div style={{ width: `${(l.soc_enc / 50) * 100}%` }} className="bg-emerald-500 h-full" />
+                          </div>
+                        </div>
+                      </td>
+                      {/* Retours */}
+                      <td className="px-3 py-2.5 text-right font-mono text-red-600">
+                        {N(l.retours)}
+                      </td>
+                      {/* Taux retour */}
+                      <td className={`px-3 py-2.5 text-center ${getTauxRetourStyle(l.taux_retour)}`}>
+                        {P(l.taux_retour)}
+                      </td>
+                    </motion.tr>
+                  );
+                })}
+
+                {sortedAndFilteredData.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="py-8 text-center text-slate-450 font-semibold text-slate-500 font-sans">
+                      🚫 Aucun livreur ne correspond aux filtres de recherche. Veuillez réinitialiser les filtres.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+
+      {/* 2b. Tableau 2/2 : délais, opérations et montants (Livreur/Station répétés pour repère,
+          car c'est un tableau indépendant du premier — même ordre de lignes) */}
+      {sortedAndFilteredData.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Délais, Opérations &amp; Montants</p>
+          <div className="border border-white/20 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto custom-scrollbar max-h-[600px]">
+              <table className="w-full text-left border-collapse min-w-[1400px] text-xs font-sans">
+                <thead className="bg-[#1B3A5C]/85 backdrop-blur-md text-white font-semibold sticky top-0 z-10 shadow-xs">
+                  <tr>
+                    <th className="px-3 py-3 w-12 text-center select-none">#</th>
+                    <th className="px-4 py-3 min-w-[180px] cursor-pointer select-none" onClick={() => handleSort("livreur")}>
+                      <div className="flex items-center">Livreur {renderSortIndicator("livreur")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-28 cursor-pointer text-right select-none" onClick={() => handleSort("delai_moy_h")}>
+                      <div className="flex items-center justify-end">Délai Disp.(h) {renderSortIndicator("delai_moy_h")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-28 cursor-pointer text-right select-none" onClick={() => handleSort("delai_fdr_h")}>
+                      <div className="flex items-center justify-end">Délai FDR(h) {renderSortIndicator("delai_fdr_h")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-28 cursor-pointer text-right select-none" onClick={() => handleSort("delai_enc_h")}>
+                      <div className="flex items-center justify-end">Délai Enc.(h) {renderSortIndicator("delai_enc_h")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-20 cursor-pointer text-right select-none" onClick={() => handleSort("jours_actifs")}>
+                      <div className="flex items-center justify-end">J. Actifs {renderSortIndicator("jours_actifs")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("moy_colis_jour")}>
+                      <div className="flex items-center justify-end">Moy./Jour {renderSortIndicator("moy_colis_jour")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("domicile")}>
+                      <div className="flex items-center justify-end">Domicile {renderSortIndicator("domicile")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("stop_desk")}>
+                      <div className="flex items-center justify-end">Stop Desk {renderSortIndicator("stop_desk")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("echanges")}>
+                      <div className="flex items-center justify-end">Échanges {renderSortIndicator("echanges")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-20 cursor-pointer text-right select-none" onClick={() => handleSort("wilayas")}>
+                      <div className="flex items-center justify-end">Wilayas {renderSortIndicator("wilayas")}</div>
+                    </th>
+                    <th className="px-3 py-3 w-24 cursor-pointer text-right select-none" onClick={() => handleSort("communes")}>
+                      <div className="flex items-center justify-end">Communes {renderSortIndicator("communes")}</div>
+                    </th>
+                    <th className="px-4 py-3 min-w-[120px] cursor-pointer text-right select-none" onClick={() => handleSort("remun")}>
+                      <div className="flex items-center justify-end">Rémun.(DA) {renderSortIndicator("remun")}</div>
+                    </th>
+                    <th className="px-4 py-3 min-w-[150px] cursor-pointer text-right select-none" onClick={() => handleSort("montant_enc")}>
+                      <div className="flex items-center justify-end">Montant Enc. {renderSortIndicator("montant_enc")}</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#DDE3EE]/60 text-slate-800 font-medium">
+                  {sortedAndFilteredData.map((l, index) => {
+                    let rowBg = "hover:bg-slate-50/70 transition-colors";
+                    if (l.taux_livraison >= 90) {
+                      rowBg = "bg-emerald-50/30 hover:bg-emerald-50/50 transition-colors";
+                    } else if (l.taux_livraison < 60) {
+                      rowBg = "bg-red-50/30 hover:bg-red-50/50 transition-colors";
+                    }
+                    const animateRow = !prefersReduced && index < 50;
+
+                    return (
+                      <motion.tr
+                        key={l.id}
+                        className={`${rowBg} cursor-pointer`}
+                        onClick={() => setDetailLivreur(l)}
+                        title="Voir la fiche détaillée (colis, expéditeurs, communes)"
+                        initial={animateRow ? { opacity: 0, x: -8 } : false}
+                        animate={animateRow ? { opacity: 1, x: 0 } : false}
+                        transition={animateRow ? { delay: index * 0.015, duration: 0.25 } : undefined}
+                      >
+                        {/* Index / Rang (répété pour repère avec le 1er tableau) */}
+                        <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-400">
+                          {index + 1}
+                        </td>
+                        {/* Nom livreur (répété pour repère) */}
+                        <td className="px-4 py-2.5 font-bold text-[#1B3A5C] truncate max-w-[180px]">
+                          {l.livreur}
+                        </td>
+                        {/* Délai Disp */}
+                        <td className={`px-3 py-2.5 text-right ${getDelaiStyle(l.delai_moy_h)}`}>
+                          {l.delai_moy_h > 0 ? `${F(l.delai_moy_h)}h` : "–"}
+                        </td>
+                        {/* Délai FDR */}
+                        <td className={`px-3 py-2.5 text-right ${getDelaiStyle(l.delai_fdr_h)}`}>
+                          {l.delai_fdr_h > 0 ? `${F(l.delai_fdr_h)}h` : "–"}
+                        </td>
+                        {/* Délai Enc */}
+                        <td className={`px-3 py-2.5 text-right ${getDelaiStyle(l.delai_enc_h)}`}>
+                          {l.delai_enc_h > 0 ? `${F(l.delai_enc_h)}h` : "–"}
+                        </td>
+                        {/* Jours actifs */}
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-500">
+                          {N(l.jours_actifs)}
+                        </td>
+                        {/* Moy Colis/Jour */}
+                        <td className="px-3 py-2.5 text-right font-mono text-[#1B3A5C]">
+                          {F(l.moy_colis_jour)}
+                        </td>
+                        {/* Domicile */}
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-500">
+                          {N(l.domicile)}
+                        </td>
+                        {/* Stop desk */}
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-500">
+                          {N(l.stop_desk)}
+                        </td>
+                        {/* Echanges */}
+                        <td className="px-3 py-2.5 text-right font-mono text-amber-600">
+                          {N(l.echanges)}
+                        </td>
+                        {/* Wilayas */}
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-500">
+                          {N(l.wilayas)}
+                        </td>
+                        {/* Communes */}
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-500">
+                          {N(l.communes)}
+                        </td>
+                        {/* Rémunération */}
+                        <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-700">
+                          {N(l.remun)} <span className="text-[9px] font-medium text-slate-400">DA</span>
+                        </td>
+                        {/* Montant encaissé */}
+                        <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-700">
+                          {N(l.montant_enc)} <span className="text-[9px] font-medium text-slate-400">DA</span>
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notificateur Local */}
       <AnimatePresence>
