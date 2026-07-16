@@ -440,6 +440,14 @@ export default function App() {
           <ImportModal
             onClose={() => setShowImportModal(false)}
             onAggregated={handleAggregated}
+            onRawRowsUploadResult={({ totalBatches, failedBatches }) => {
+              if (failedBatches === 0) return;
+              const complet = totalBatches - failedBatches;
+              triggerToast(
+                `⚠️ Détail ligne par ligne partiellement sauvegardé (${complet}/${totalBatches} lots) : le drill-down sera incomplet pour certains colis de cet import.`,
+                "error"
+              );
+            }}
           />
         )}
 

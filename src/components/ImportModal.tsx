@@ -9,6 +9,9 @@ interface ImportModalProps {
   // Retourne l'ID du snapshot créé (ou null si la sauvegarde a échoué) pour l'upload du détail
   // ligne par ligne qui suit.
   onAggregated: (data: AppData, fileName: string) => Promise<string | null>;
+  // Appelé une fois l'upload du détail ligne par ligne terminé (avec ou sans échecs partiels),
+  // pour que le dashboard puisse informer l'utilisateur si tout n'a pas pu être sauvegardé.
+  onRawRowsUploadResult?: (result: { totalBatches: number; failedBatches: number }) => void;
 }
 
 // Les colonnes importantes que l'on vérifie
@@ -17,7 +20,7 @@ const COLUMNS_TO_VERIFY = [
   "Livreur", "Station déstination", "Dispatché au livreur le", "Livré le", "Retour demandé le"
 ];
 
-export default function ImportModal({ onClose, onAggregated }: ImportModalProps) {
+export default function ImportModal({ onClose, onAggregated, onRawRowsUploadResult }: ImportModalProps) {
   const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -141,9 +144,11 @@ export default function ImportModal({ onClose, onAggregated }: ImportModalProps)
           }, 300);
         } else if (msg.type === "uploadProgress") {
           setParseProgress(msg.pct);
-        } else if (msg.type === "uploadDone" || msg.type === "uploadError") {
-          // Non bloquant : le dashboard et le snapshot sont déjà sauvegardés. Sans le détail
-          // ligne par ligne, le drill-down sera simplement indisponible pour cet import.
+        } else if (msg.type === "uploadDone") {
+          // Non bloquant : le dashboard et le snapshot sont déjà sauvegardés. Les lots qui ont
+          // échoué malgré les tentatives de renvoi laissent simplement le drill-down incomplet
+          // pour les colis concernés — l'utilisateur en est informé via onRawRowsUploadResult.
+          onRawRowsUploadResult?.({ totalBatches: msg.totalBatches, failedBatches: msg.failedBatches });
           onClose();
         } else if (msg.type === "error") {
           alert(`Erreur de lecture du fichier : ${msg.message}`);
