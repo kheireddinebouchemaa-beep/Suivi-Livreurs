@@ -57,6 +57,7 @@ export function uploadRawRowsBatch(snapshotId: string, rows: FlatRow[]) {
 
 export interface RawRowsFilter {
   livreur?: string;
+  noLivreur?: boolean; // lignes ignorées "sans livreur assigné" (champ stocké NULL)
   station?: string;
   statut?: string;
   expediteur?: string;

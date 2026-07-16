@@ -8,6 +8,7 @@ import PerformanceTab from "./components/PerformanceTab";
 import StationsTab from "./components/StationsTab";
 import ExpediteursTab from "./components/ExpediteursTab";
 import ZonesTab from "./components/ZonesTab";
+import LignesIgnoreesTab from "./components/LignesIgnoreesTab";
 import ImportModal from "./components/ImportModal";
 import PdfModal from "./components/PdfModal";
 import AlertsPanel from "./components/AlertsPanel";
@@ -279,7 +280,8 @@ export default function App() {
                 { id: "performance", label: "🏆 Classement SOC", count: null },
                 { id: "stations", label: "🏢 Par Station", count: null },
                 { id: "expediteurs", label: "📦 Expéditeurs", count: null },
-                { id: "zones", label: "🗺️ Zones", count: null }
+                { id: "zones", label: "🗺️ Zones", count: null },
+                { id: "lignes-ignorees", label: "🔍 Lignes ignorées", count: data.global.lignes_ignorees_sans_livreur + data.global.lignes_ignorees_sans_dispatch }
               ].map((tab) => {
                 const isActive = selectedPage === tab.id;
                 return (
@@ -374,6 +376,7 @@ export default function App() {
                       onNavigateToLivreurs={() => setSelectedPage("livreurs")}
                       onNavigateToRetours={() => setSelectedPage("retours")}
                       onNavigateToDelais={() => setSelectedPage("delais")}
+                      onNavigateToLignesIgnorees={() => setSelectedPage("lignes-ignorees")}
                     />
                   )}
 
@@ -403,6 +406,10 @@ export default function App() {
 
                   {selectedPage === "zones" && (
                     <ZonesTab data={data} />
+                  )}
+
+                  {selectedPage === "lignes-ignorees" && (
+                    <LignesIgnoreesTab data={data} snapshotId={snapshotId} />
                   )}
                 </motion.div>
               </AnimatePresence>

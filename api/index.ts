@@ -126,6 +126,9 @@ app.get("/api/snapshots/:id/raw-rows", async (req, res) => {
     .eq("snapshot_id", req.params.id);
 
   if (req.query.livreur) query = query.eq("livreur", String(req.query.livreur));
+  // Lignes ignorées "sans livreur assigné" : le champ est stocké NULL (jamais une chaîne vide),
+  // donc un simple .eq("livreur", "") ne les trouverait pas.
+  if (req.query.noLivreur === "true") query = query.is("livreur", null);
   if (req.query.station) query = query.eq("station", String(req.query.station));
   if (req.query.statut) query = query.eq("statut", String(req.query.statut));
   if (req.query.expediteur) query = query.eq("expediteur", String(req.query.expediteur));
