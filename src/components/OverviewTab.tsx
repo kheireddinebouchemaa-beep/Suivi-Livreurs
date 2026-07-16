@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 import { AppData, LivreurRecap, SkippedRowExample, KpiTrend } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
-import { TrendingUp, TrendingDown, Minus, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText, Info, Search, Wallet, RefreshCcw } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Table as TableIcon, FileText, Info, Search, Wallet, RefreshCcw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { exportOverviewExcel } from "../exportExcel";
 import { exportOverviewPdf } from "../exportPdf";
@@ -430,62 +430,6 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         </div>
       </div>
 
-      {/* 1. Bandeau "Spotlight" (fond dégradé navy glass) */}
-      <div className="bg-gradient-to-r from-[#1B3A5C]/85 via-[#244C78]/85 to-[#1B3A5C]/85 backdrop-blur-md rounded-2xl p-6 text-white shadow-md relative overflow-hidden border border-white/10">
-        {/* Glow Effet */}
-        <div className="absolute right-0 top-0 -mr-20 -mt-20 w-80 h-80 bg-orange/20 rounded-full blur-3xl pointer-events-none"></div>
-        
-        <h3 className="text-xs uppercase tracking-wider font-bold text-orange-400 mb-4 font-sans">Spotlight Opérationnel</h3>
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-6 divide-y md:divide-y-0 md:divide-x divide-white/10">
-          <div className="pt-3 md:pt-0">
-            <span className="block text-xs text-slate-300">Livreurs actifs</span>
-            <span className="text-2xl font-bold font-mono text-white"><AnimatedNumber value={data.global.nb_livreurs} /></span>
-          </div>
-          
-          <button
-            onClick={() => setDrillDown({ title: "Total Dispatchés — détail", filter: { isDispatched: true } })}
-            className="pt-3 md:pt-0 md:pl-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
-          >
-            <span className="block text-xs text-slate-300">Total Dispatchés</span>
-            <span className="text-2xl font-bold font-mono text-white"><AnimatedNumber value={data.global.total_dispatches} /></span>
-          </button>
-
-          <button
-            onClick={() => setDrillDown({ title: "Total Livrés — détail", filter: { isLivre: true } })}
-            className="pt-3 md:pt-0 md:pl-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
-          >
-            <span className="block text-xs text-slate-300">Total Livrés</span>
-            <span className="text-2xl font-bold font-mono text-[#18A558]"><AnimatedNumber value={data.global.total_livres} /></span>
-          </button>
-
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Taux Livraison</span>
-            <span className="text-2xl font-bold font-mono text-orange-450 text-[#E8741A]"><AnimatedNumber value={data.global.taux_global} isDecimal suffix="%" /></span>
-          </div>
-
-          <button
-            onClick={() => setDrillDown({ title: "Total Retours — détail", filter: { isRetour: true } })}
-            className="pt-3 md:pt-0 md:pl-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
-          >
-            <span className="block text-xs text-slate-300">Total Retours</span>
-            <span className="text-2xl font-bold font-mono text-[#D93025]"><AnimatedNumber value={data.global.total_retours} /></span>
-          </button>
-
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Taux Retour</span>
-            <span className="text-2xl font-bold font-mono text-red-300">
-              <AnimatedNumber value={data.global.total_dispatches > 0 ? (data.global.total_retours / data.global.total_dispatches) * 100 : 0} isDecimal suffix="%" />
-            </span>
-          </div>
-
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Délai Moyen</span>
-            <span className="text-2xl font-bold font-mono text-yellow-400"><AnimatedNumber value={data.global.delai_moy} isDecimal suffix="h" /></span>
-          </div>
-        </div>
-      </div>
-
       {/* Traçabilité de l'import : lignes du fichier vs lignes comptabilisées */}
       {(data.global.lignes_ignorees_sans_livreur > 0 || data.global.lignes_ignorees_sans_dispatch > 0) && (
         <div className="bg-slate-100/70 border border-slate-200 text-slate-600 rounded-xl px-4 py-2.5 text-[11px] leading-relaxed">
@@ -560,73 +504,69 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         </div>
       )}
 
-      {/* 2. Grille de 9 KPI cards (3x3) avec animations et bande de couleur en haut */}
-      <motion.div 
+      {/* 2. Grille de KPI cards avec animations et bande de couleur en haut.
+          Taux Livraison Global et SOC Moyen Réseau ne sont pas répétés ici : déjà visibles en
+          Niveau 1 juste au-dessus, toujours sans scroll. */}
+      <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="show"
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
       >
-        {/* Taux livraison global */}
-        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
-          <div className="h-1.5 bg-emerald-500 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Taux Livraison Global</p>
-              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.taux_global} isDecimal suffix="%" /></h3>
-              <p className="text-[10px] text-emerald-600 mt-1 flex items-center font-sans font-medium">
-                <CheckCircle className="w-3 h-3 mr-1" /> Performance cible : ≥ 90%
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-        </motion.div>
-
         {/* Total dispatchés */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-sky-600 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setDrillDown({ title: "Total Dispatchés — détail", filter: { isDispatched: true } })}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Total Dispatchés</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Total Dispatchés <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.total_dispatches} /></h3>
               <p className="text-[10px] text-slate-500 mt-1 font-sans">Colis confiés au réseau</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-sky-50 flex items-center justify-center text-sky-600">
               <Package className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* Total livrés */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-emerald-600 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setDrillDown({ title: "Total Livrés — détail", filter: { isLivre: true } })}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Total Livrés</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Total Livrés <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-emerald-600 mt-1"><AnimatedNumber value={data.global.total_livres} /></h3>
               <p className="text-[10px] text-emerald-500 mt-1 font-sans">Remises clients effectives</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
               <CheckCircle className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* Total retours */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-red-500 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setDrillDown({ title: "Total Retours — détail", filter: { isRetour: true } })}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Total Retours</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Total Retours <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-red-600 mt-1"><AnimatedNumber value={data.global.total_retours} /></h3>
-              <p className="text-[10px] text-red-500 mt-1 font-sans">Retours initiés & confirmés</p>
+              <p className="text-[10px] text-red-500 mt-1 font-sans">
+                {F(data.global.total_dispatches > 0 ? (data.global.total_retours / data.global.total_dispatches) * 100 : 0)}% des dispatchés
+              </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600">
               <AlertTriangle className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* Délai moyen dispatch -> livré */}
@@ -690,27 +630,6 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
               <Package className="w-5 h-5" />
             </div>
           </button>
-        </motion.div>
-
-        {/* SOC MOYEN RESEAU (9ème carte) */}
-        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300 bg-indigo-50/20 border border-indigo-200/50">
-          <div className="h-1.5 bg-indigo-600 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
-            <div>
-              <p className="text-xs font-semibold text-indigo-700 uppercase flex items-center gap-1">
-                <Activity className="w-3.5 h-3.5" /> SOC Moyen Réseau
-              </p>
-              <h3 className="text-3xl font-black font-mono text-indigo-900 mt-1">
-                <AnimatedNumber value={averageSOC} isDecimal suffix=" / 100" />
-              </h3>
-              <p className="text-[10px] text-slate-500 mt-1 font-sans font-medium">
-                Taux 30% · Rapidité 20% · Encaissement 50%
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-750">
-              <Trophy className="w-5 h-5 text-indigo-600" />
-            </div>
-          </div>
         </motion.div>
       </motion.div>
 
