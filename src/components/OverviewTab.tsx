@@ -97,31 +97,26 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
   const [examplesModal, setExamplesModal] = useState<{ label: string; rows: SkippedRowExample[] } | null>(null);
   const [drillDown, setDrillDown] = useState<{ title: string; filter: Omit<RawRowsFilter, "search" | "page" | "pageSize"> } | null>(null);
   const [showLivreursActifs, setShowLivreursActifs] = useState(false);
+  const [selectedTranche, setSelectedTranche] = useState<string | null>(null);
 
   // 1. Calculer la distribution du taux de livraison
   // Tranches : <50%, 50-60%, 60-70%, 70-80%, 80-90%, 90-95%, >95%
   // Seulement pour livreurs avec dispatches >= 10
   const relevantLivreurs = data.recap.filter(l => l.dispatches >= 10);
-  const tranches = {
-    under50: 0,
-    r50_60: 0,
-    r60_70: 0,
-    r70_80: 0,
-    r80_90: 0,
-    r90_95: 0,
-    over95: 0
-  };
-
-  relevantLivreurs.forEach(l => {
-    const t = l.taux_livraison;
-    if (t < 50) tranches.under50++;
-    else if (t < 60) tranches.r50_60++;
-    else if (t < 70) tranches.r60_70++;
-    else if (t < 80) tranches.r70_80++;
-    else if (t < 90) tranches.r80_90++;
-    else if (t <= 95) tranches.r90_95++;
-    else tranches.over95++;
-  });
+  const TRANCHES = [
+    { label: "<50%", test: (t: number) => t < 50 },
+    { label: "50-60%", test: (t: number) => t >= 50 && t < 60 },
+    { label: "60-70%", test: (t: number) => t >= 60 && t < 70 },
+    { label: "70-80%", test: (t: number) => t >= 70 && t < 80 },
+    { label: "80-90%", test: (t: number) => t >= 80 && t < 90 },
+    { label: "90-95%", test: (t: number) => t >= 90 && t <= 95 },
+    { label: ">95%", test: (t: number) => t > 95 },
+  ];
+  const trancheCounts = TRANCHES.map(tr => relevantLivreurs.filter(l => tr.test(l.taux_livraison)).length);
+  const selectedTrancheDef = TRANCHES.find(tr => tr.label === selectedTranche);
+  const selectedTrancheLivreurs = selectedTrancheDef
+    ? relevantLivreurs.filter(l => selectedTrancheDef.test(l.taux_livraison)).sort((a, b) => b.taux_livraison - a.taux_livraison)
+    : [];
 
   // 2. Extraire les tops
   // Top 10 volume livré
@@ -229,19 +224,11 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
       barChartInstance.current = new Chart(barChartRef.current, {
         type: "bar",
         data: {
-          labels: ["<50%", "50-60%", "60-70%", "70-80%", "80-90%", "90-95%", ">95%"],
+          labels: TRANCHES.map(tr => tr.label),
           datasets: [
             {
               label: "Livreurs (≥ 10 dispatches)",
-              data: [
-                tranches.under50,
-                tranches.r50_60,
-                tranches.r60_70,
-                tranches.r70_80,
-                tranches.r80_90,
-                tranches.r90_95,
-                tranches.over95
-              ],
+              data: trancheCounts,
               backgroundColor: [
                 "#D93025", // <50% rouge
                 "#E8741A", // 50-60% orange
@@ -260,6 +247,17 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          onClick: (_evt, elements) => {
+            if (elements.length > 0) {
+              const idx = elements[0].index;
+              const tr = TRANCHES[idx];
+              if (tr) setSelectedTranche(tr.label);
+            }
+          },
+          onHover: (evt, elements) => {
+            const target = evt.native?.target as HTMLElement | undefined;
+            if (target) target.style.cursor = elements.length > 0 ? "pointer" : "default";
+          },
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -657,7 +655,7 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         <div className="glass-panel p-5 rounded-xl">
           <div className="mb-4 pb-3 border-b border-[#F0F3F8]">
             <h4 className="font-bold text-[#1B3A5C] text-sm font-sans">Distribution des taux de livraison</h4>
-            <p className="text-[11px] text-[#6B7A99]">Répartition des livreurs selon leur performance (dispatches ≥ 10)</p>
+            <p className="text-[11px] text-[#6B7A99]">Répartition des livreurs selon leur performance (dispatches ≥ 10) — cliquez une barre pour voir les livreurs concernés</p>
           </div>
           <div className="h-72 relative">
             <canvas ref={barChartRef}></canvas>
@@ -893,6 +891,63 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
       <AnimatePresence>
         {showLivreursActifs && (
           <LivreursActifsModal livreurs={data.recap} onClose={() => setShowLivreursActifs(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* Livreurs d'une tranche de taux de livraison (clic sur une barre du graphe de distribution) */}
+      <AnimatePresence>
+        {selectedTranche && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-[#1B3A5C]/30 backdrop-blur-md flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedTranche(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="bg-[#1B3A5C] text-white px-4 py-3 flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h3 className="font-bold text-sm">Livreurs — taux de livraison {selectedTranche} ({N(selectedTrancheLivreurs.length)})</h3>
+                  <p className="text-[10px] text-slate-300">Livreurs avec au moins 10 dispatches, triés par taux décroissant</p>
+                </div>
+                <button onClick={() => setSelectedTranche(null)} className="text-white/80 hover:text-white p-1 hover:bg-white/10 rounded cursor-pointer">✕</button>
+              </div>
+              <div className="overflow-auto flex-1 custom-scrollbar">
+                {selectedTrancheLivreurs.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-400">Aucun livreur dans cette tranche.</div>
+                ) : (
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-slate-100 sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livreur</th>
+                        <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Station</th>
+                        <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Dispatchés</th>
+                        <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Livrés</th>
+                        <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Taux livr.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedTrancheLivreurs.map((l) => (
+                        <tr key={l.id} className="border-t border-slate-100 hover:bg-slate-50">
+                          <td className="px-3 py-1.5 font-semibold text-[#1B3A5C]">{l.livreur}</td>
+                          <td className="px-3 py-1.5 text-slate-600">{l.station}</td>
+                          <td className="px-3 py-1.5 text-right font-mono">{N(l.dispatches)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-emerald-600">{N(l.livres)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono font-bold">{F(l.taux_livraison)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
