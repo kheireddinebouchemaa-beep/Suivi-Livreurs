@@ -35,7 +35,7 @@ const TREND_LABELS: { key: string; label: string; unit: string; inverse: boolean
   { key: "soc_moyen", label: "SOC moyen", unit: "", inverse: false },
   { key: "delai_restitution_cod", label: "Restitution COD", unit: "h", inverse: true },
   { key: "taux_anomalie", label: "Taux d'anomalie", unit: "%", inverse: true },
-  { key: "marge_nette", label: "Marge nette", unit: " DA", inverse: false },
+  { key: "montant_cod_livre", label: "Montant COD livré", unit: " DA", inverse: false },
   { key: "taux_retour_global", label: "Taux de retour", unit: "%", inverse: true },
   { key: "delai_moy", label: "Délai moyen dispatch→livré", unit: "h", inverse: true },
   { key: "taux_communication", label: "Communication (SMS)", unit: "%", inverse: false },
@@ -417,16 +417,16 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
           <TrendArrow trend={tendances.find(t => t.key === "delai_restitution_cod")} unit="h" inverse />
         </div>
 
-        {/* Marge nette période */}
+        {/* Montant COD des colis livrés (pas une marge : aucune charge n'est déduite) */}
         <div className="glass-panel rounded-xl p-4 space-y-2">
           <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-            <Wallet className="w-3 h-3" /> Marge Nette
+            <Wallet className="w-3 h-3" /> Montant COD Livré
           </p>
           <h3 className="text-2xl font-bold font-mono text-[#1B3A5C]">
-            {N(data.global.marge_nette_totale)}
+            {N(data.global.montant_cod_livre_total)}
           </h3>
-          <p className="text-[10px] text-slate-500 font-sans">DA, sur la période importée</p>
-          <TrendArrow trend={tendances.find(t => t.key === "marge_nette")} unit=" DA" />
+          <p className="text-[10px] text-slate-500 font-sans">DA encaissés pour les colis livrés</p>
+          <TrendArrow trend={tendances.find(t => t.key === "montant_cod_livre")} unit=" DA" />
         </div>
       </div>
 

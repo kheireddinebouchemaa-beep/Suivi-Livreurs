@@ -13,7 +13,7 @@ export function computeTrends(actuel: AppData, precedent: AppData | null): KpiTr
     ["soc_moyen", moyenneSOC(actuel), moyenneSOC(precedent)],
     ["delai_restitution_cod", actuel.global.delai_restitution_cod_moy_h, precedent.global.delai_restitution_cod_moy_h],
     ["taux_anomalie", actuel.global.taux_anomalie, precedent.global.taux_anomalie],
-    ["marge_nette", actuel.global.marge_nette_totale, precedent.global.marge_nette_totale],
+    ["montant_cod_livre", actuel.global.montant_cod_livre_total, precedent.global.montant_cod_livre_total],
     ["taux_retour_global", actuel.global.total_dispatches > 0 ? (actuel.global.total_retours / actuel.global.total_dispatches) * 100 : 0,
       precedent.global.total_dispatches > 0 ? (precedent.global.total_retours / precedent.global.total_dispatches) * 100 : 0],
     ["delai_moy", actuel.global.delai_moy, precedent.global.delai_moy],

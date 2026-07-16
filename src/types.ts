@@ -61,7 +61,7 @@ export interface GlobalKPIs {
   taux_same_day_respecte: number;          // % colis "Same Day" livrés le jour même
   delai_enlevement_moy_h: number;          // Ramassage demandé le → Ramassage effectué le
   taux_colis_factures: number;             // Colis facturé=oui / total
-  marge_nette_totale: number;              // Somme des marges nettes par expéditeur
+  montant_cod_livre_total: number;         // Montant COD total encaissé sur les colis livrés (pas une marge IMIR)
 }
 
 export interface LivreurRecap {
@@ -145,7 +145,7 @@ export interface ExpediteurRecap {
   taux_retour: number;
   nbLivreurs: number;
   nbCommunes: number;
-  margeNette: number;   // Montant encaissé − Commission sur colis − Rémunération livreur − Surfacturation, somme sur tous ses colis
+  montantCodLivre: number;   // Montant COD total des colis livrés de cet expéditeur (pas une marge)
 }
 
 export interface KpiTrend {

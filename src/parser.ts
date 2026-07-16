@@ -191,7 +191,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   type SubCounts = { dispatches: number; livres: number; retours: number };
   const expediteurByLivreur: Record<string, Record<string, SubCounts>> = {};
   const zoneByLivreur: Record<string, Record<string, { commune: string; wilaya: string } & SubCounts>> = {};
-  const globalExpediteurMap: Record<string, SubCounts & { livreursSet: Set<string>; communesSet: Set<string>; margeTotale: number }> = {};
+  const globalExpediteurMap: Record<string, SubCounts & { livreursSet: Set<string>; communesSet: Set<string>; montantLivreTotal: number }> = {};
   const globalZoneMap: Record<string, { commune: string; wilaya: string } & SubCounts> = {};
 
   // Compteurs/accumulateurs globaux pour les nouveaux KPI (section 2 de la spec KPI avancés)
@@ -275,7 +275,6 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     const montant = parseNumber(findKey(row, keysMapping.montant));
     const remLivreur = parseNumber(findKey(row, keysMapping.remunerationLivreur));
     const surfLivreur = parseNumber(findKey(row, keysMapping.surfacturationLivreur));
-    const commissionColis = parseNumber(findKey(row, keysMapping.commission));
 
     // Nouveaux KPI : anomalies, communication, facturation, ponctualité Same Day
     const remarqueStr = String(findKey(row, keysMapping.remarque) || "").trim();
@@ -394,13 +393,15 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     if (isLivred) zoneLiv.livres += 1;
     if (isRetour) zoneLiv.retours += 1;
 
-    const gExp = globalExpediteurMap[expediteurStr] ||= { dispatches: 0, livres: 0, retours: 0, livreursSet: new Set<string>(), communesSet: new Set<string>(), margeTotale: 0 };
+    const gExp = globalExpediteurMap[expediteurStr] ||= { dispatches: 0, livres: 0, retours: 0, livreursSet: new Set<string>(), communesSet: new Set<string>(), montantLivreTotal: 0 };
     gExp.dispatches += 1;
     if (isLivred) gExp.livres += 1;
     if (isRetour) gExp.retours += 1;
     gExp.livreursSet.add(liveurName);
     if (communeStr) gExp.communesSet.add(communeStr);
-    gExp.margeTotale += montant - commissionColis - remLivreur - surfLivreur;
+    // Montant COD des colis effectivement livrés pour cet expéditeur (pas une marge : aucune
+    // charge n'est déduite, c'est le montant encaissé pour le compte du client).
+    if (isLivred) gExp.montantLivreTotal += montant;
 
     const gZone = globalZoneMap[zoneKey] ||= { commune: communeLabel, wilaya: wilayaLabel, dispatches: 0, livres: 0, retours: 0 };
     gZone.dispatches += 1;
@@ -720,7 +721,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       taux_retour: v.dispatches > 0 ? parseFloat(((v.retours / v.dispatches) * 100).toFixed(1)) : 0,
       nbLivreurs: v.livreursSet.size,
       nbCommunes: v.communesSet.size,
-      margeNette: parseFloat(v.margeTotale.toFixed(2)),
+      montantCodLivre: parseFloat(v.montantLivreTotal.toFixed(2)),
     }))
     .sort((a, b) => b.dispatches - a.dispatches);
 
@@ -756,7 +757,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     ? parseFloat((delaisEnlevementGlobal.reduce((a, b) => a + b, 0) / delaisEnlevementGlobal.length).toFixed(1))
     : 0;
   const taux_colis_factures = total_dispatches > 0 ? parseFloat(((totalFactures / total_dispatches) * 100).toFixed(1)) : 0;
-  const marge_nette_totale = parseFloat(expediteurs.reduce((s, e) => s + e.margeNette, 0).toFixed(2));
+  // Montant COD total des colis livrés (encaissé pour le compte des clients expéditeurs) —
+  // ce n'est pas une marge pour IMIR, juste le volume d'argent qui transite via les livraisons.
+  const montant_cod_livre_total = parseFloat(expediteurs.reduce((s, e) => s + e.montantCodLivre, 0).toFixed(2));
 
   const global: GlobalKPIs = {
     total_dispatches,
@@ -779,7 +782,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     taux_same_day_respecte,
     delai_enlevement_moy_h,
     taux_colis_factures,
-    marge_nette_totale
+    montant_cod_livre_total
   };
 
   onProgress?.(100);
