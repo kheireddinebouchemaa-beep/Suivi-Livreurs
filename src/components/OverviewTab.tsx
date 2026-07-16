@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { exportOverviewExcel } from "../exportExcel";
 import { exportOverviewPdf } from "../exportPdf";
 import DrillDownModal from "./DrillDownModal";
+import LivreursActifsModal from "./LivreursActifsModal";
 import { RawRowsFilter } from "../lib/api";
 
 // Flèche de tendance : verte/rouge/grise selon le sens du mieux pour ce KPI (inverse=true pour
@@ -95,6 +96,7 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
   const [showSkippedDetail, setShowSkippedDetail] = useState(false);
   const [examplesModal, setExamplesModal] = useState<{ label: string; rows: SkippedRowExample[] } | null>(null);
   const [drillDown, setDrillDown] = useState<{ title: string; filter: Omit<RawRowsFilter, "search" | "page" | "pageSize"> } | null>(null);
+  const [showLivreursActifs, setShowLivreursActifs] = useState(false);
 
   // 1. Calculer la distribution du taux de livraison
   // Tranches : <50%, 50-60%, 60-70%, 70-80%, 80-90%, 90-95%, >95%
@@ -602,16 +604,19 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         {/* Livreurs actifs */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-teal-500 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setShowLivreursActifs(true)}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Livreurs Actifs</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Livreurs Actifs <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.nb_livreurs} /></h3>
               <p className="text-[10px] text-teal-600 mt-1 font-sans">Dans l'export analysé</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
               <Users className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* Non livrés */}
@@ -872,7 +877,7 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         )}
       </AnimatePresence>
 
-      {/* Drill-down générique : détail ligne par ligne depuis une carte du Spotlight */}
+      {/* Drill-down générique : détail ligne par ligne depuis une carte KPI */}
       <AnimatePresence>
         {drillDown && (
           <DrillDownModal
@@ -881,6 +886,13 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
             filter={drillDown.filter}
             onClose={() => setDrillDown(null)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Liste des livreurs actifs avec leur dernière activité */}
+      <AnimatePresence>
+        {showLivreursActifs && (
+          <LivreursActifsModal livreurs={data.recap} onClose={() => setShowLivreursActifs(false)} />
         )}
       </AnimatePresence>
     </div>

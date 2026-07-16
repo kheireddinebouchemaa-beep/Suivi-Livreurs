@@ -98,6 +98,7 @@ export interface LivreurRecap {
   taux_communication: number;
   ecart_type_charge_jour: number;          // équilibrage de charge (calculé au niveau station, dupliqué ici pour affichage individuel)
   score_stabilite: number;                 // écart-type du taux_livraison sur les derniers snapshots (0 si historique insuffisant)
+  derniere_activite: string | null;        // ISO : date la plus récente vue sur un colis de ce livreur (Expédié/Dispatché/Livré/Encaissé/Retour)
 }
 
 export interface DailyTrend {

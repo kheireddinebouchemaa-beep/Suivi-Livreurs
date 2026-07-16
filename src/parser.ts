@@ -180,6 +180,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     remun: number;
     surfact: number;
     montantEnc: number;
+    derniereActiviteMs: number;
   }> = {};
 
   const dailyTrendMap: Record<string, { dispatches: number; livres: number; retoursBefore: number; livesEffective: number; retoursEffective: number }> = {};
@@ -363,12 +364,18 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
         communesSet: new Set<string>(),
         remun: 0,
         surfact: 0,
-        montantEnc: 0
+        montantEnc: 0,
+        derniereActiviteMs: 0
       };
     }
 
     const liveRecord = aggregatedLivreurs[livreurKey];
     liveRecord.dispatches += 1;
+    // Dernière activité connue pour ce livreur : la plus récente des dates du colis (peu importe
+    // laquelle), pour repérer un livreur qui n'a plus rien reçu/traité depuis longtemps.
+    for (const d of [expDate, dispLivreurDate, livreDate, encaisseDate, retourDate]) {
+      if (d && d.getTime() > liveRecord.derniereActiviteMs) liveRecord.derniereActiviteMs = d.getTime();
+    }
     if (isLivred) {
       liveRecord.livres += 1;
       liveRecord.montantEnc += montant;
@@ -596,7 +603,8 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       cout_livraison_moyen: livCoutLivraisonMoyen,
       taux_communication: livTauxCommunication,
       ecart_type_charge_jour,
-      score_stabilite: 0 // nécessite l'historique de plusieurs snapshots, calculé côté frontend plus tard
+      score_stabilite: 0, // nécessite l'historique de plusieurs snapshots, calculé côté frontend plus tard
+      derniere_activite: s.derniereActiviteMs > 0 ? new Date(s.derniereActiviteMs).toISOString() : null
     };
   });
 
