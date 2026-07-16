@@ -58,12 +58,17 @@ function getHoursDiff(start: Date | null, end: Date | null): number | null {
   return diffHrs;
 }
 
-// Extraction du jour au format string court pour regroupement unique
+// Extraction du jour au format ISO (YYYY-MM-DD) pour regroupement/tri chronologique fiable
+// (un format "dd-mm" sans année provoquerait des collisions entre années et un tri incorrect)
 function getShortDateString(date: Date | null): string | null {
   if (!date) return null;
-  const d = date.getDate().toString().padStart(2, "0");
-  const m = (date.getMonth() + 1).toString().padStart(2, "0");
-  return `${d}-${m}`;
+  return date.toISOString().slice(0, 10);
+}
+
+// Formatage d'une clé ISO (YYYY-MM-DD) en libellé court "dd-mm" pour l'affichage du graphe
+function formatShortDateLabel(isoDate: string): string {
+  const parts = isoDate.split("-");
+  return `${parts[2]}-${parts[1]}`;
 }
 
 export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) => void): { data: AppData; flatRows: FlatRow[] } {
@@ -634,17 +639,9 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   // Formater la tendance journalière (60 derniers jours)
   // Trier les dates ou prendre les 60 clés avec le plus d'activité
-  const availableDatesStr = Object.keys(dailyTrendMap);
-  // Un parseur de date rapide pour ranger chronologiquement
-  const getSortScore = (dStr: string) => {
-    // "dd-mm" -> mm * 50 + dd
-    const parts = dStr.split("-");
-    const dd = parseInt(parts[0], 10);
-    const mm = parseInt(parts[1], 10);
-    return mm * 50 + dd;
-  };
-
-  availableDatesStr.sort((a, b) => getSortScore(a) - getSortScore(b));
+  // Les clés sont désormais des dates ISO (YYYY-MM-DD) : un tri de chaînes suffit à obtenir
+  // l'ordre chronologique correct, y compris à cheval sur plusieurs années.
+  const availableDatesStr = Object.keys(dailyTrendMap).sort();
 
   // Garder au maximum les 60 derniers jours
   const lastDatesKeys = availableDatesStr.slice(-60);
@@ -652,7 +649,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   const trend: DailyTrend[] = lastDatesKeys.map(dStr => {
     const val = dailyTrendMap[dStr];
     return {
-      date: dStr,
+      date: formatShortDateLabel(dStr),
       dispatches: val.dispatches,
       livres: val.livesEffective, // d'après la formule du brief: "nb_livres = groupé par date 'Livré le' (date effective de livraison)"
       retours: val.retoursEffective // ou retours demandé le

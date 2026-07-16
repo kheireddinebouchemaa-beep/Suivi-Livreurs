@@ -1,15 +1,20 @@
 // Parsing CSV robuste, partagé entre le Web Worker d'import et le reste de l'app.
 
-// Décode un fichier CSV en texte : UTF-8 d'abord, puis re-décodage Windows-1252
-// si des motifs de mojibake sont détectés (fichiers issus de scripts de fusion non-UTF-8).
+// Décode un fichier CSV en texte : UTF-8 strict d'abord (validation réelle des octets, pas une
+// heuristique sur le texte rendu). Si les octets ne sont PAS de l'UTF-8 valide, alors seulement on
+// bascule sur Windows-1252 (encodage courant des exports Excel/scripts de fusion non-UTF-8).
+//
+// Important : ne jamais re-décoder en Windows-1252 un fichier dont l'UTF-8 est valide, même s'il
+// contient des caractères qui "ont l'air bizarres" (arabe, motifs accentués rares, etc.) — une
+// ancienne version basée sur une heuristique regex re-décodait TOUT le fichier dès qu'un seul motif
+// suspect apparaissait n'importe où, ce qui détruisait irrémédiablement (en "?") des caractères
+// UTF-8 par ailleurs parfaitement valides (ex: expéditeurs en arabe) dans un fichier à encodage mixte.
 export function decodeCsvBuffer(buffer: ArrayBuffer): string {
-  let text = new TextDecoder("utf-8").decode(buffer);
-  const sample = text.slice(0, 5000);
-  const looksLikeMojibake = /�/.test(sample) || /Ã./.test(sample) || /â€/.test(sample);
-  if (looksLikeMojibake) {
-    text = new TextDecoder("windows-1252").decode(buffer);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder("windows-1252").decode(buffer);
   }
-  return text;
 }
 
 // Parseur CSV qui s'auto-adapte aux délimiteurs (, ; ou tab) et gère le BOM UTF-8
