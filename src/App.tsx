@@ -46,10 +46,12 @@ export default function App() {
   // Détection prefers-reduced-motion
   const [prefersReduced, setPrefersReduced] = useState<boolean>(false);
 
-  // Déclencher un Toast temporaire
+  // Déclencher un Toast temporaire (les erreurs restent affichées plus longtemps : le temps de
+  // lire et éventuellement noter le message exact, notamment la taille du payload en cas d'échec
+  // de sauvegarde d'un gros import).
   const triggerToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type });
-    setTimeout(() => setToast({ message: "", type: null }), 4500);
+    setTimeout(() => setToast({ message: "", type: null }), type === "error" ? 15000 : 4500);
   }, []);
 
   // ── Charger le dernier snapshot + le précédent (pour les dégradations) + les seuils ──
