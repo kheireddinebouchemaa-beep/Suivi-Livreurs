@@ -1,77 +1,19 @@
 import express from "express";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 
 const app = express();
-app.use(cors());
+// Le frontend appelle l'API en même origine (rewrite Vercel /api/*) : pas besoin d'ouvrir le CORS à d'autres sites.
+app.use(cors({ origin: false }));
 app.use(express.json({ limit: "15mb" })); // les snapshots KPI peuvent être volumineux
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
-const JWT_SECRET = process.env.JWT_SECRET!;
-const SETUP_SECRET = process.env.SETUP_SECRET!; // clé unique pour initialiser/réinitialiser le mot de passe Direction
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// ── Middleware d'authentification ──────────────────────────
-function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Non authentifié." });
-  }
-  const token = header.slice(7);
-  try {
-    jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: "Session invalide ou expirée." });
-  }
-}
-
-// ── Setup initial du mot de passe Direction ────────────────
-// À appeler UNE FOIS après déploiement (Postman/curl), avec SETUP_SECRET.
-app.post("/api/auth/setup", async (req, res) => {
-  const { setup_secret, password } = req.body;
-  if (setup_secret !== SETUP_SECRET) {
-    return res.status(403).json({ error: "Clé de configuration invalide." });
-  }
-  if (!password || password.length < 8) {
-    return res.status(400).json({ error: "Le mot de passe doit faire au moins 8 caractères." });
-  }
-  const hash = await bcrypt.hash(password, 12);
-  const { error } = await supabase
-    .from("direction_access")
-    .upsert({ id: 1, password_hash: hash });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true, message: "Mot de passe Direction configuré." });
-});
-
-// ── Login ───────────────────────────────────────────────────
-app.post("/api/auth/login", async (req, res) => {
-  const { password } = req.body;
-  if (!password) return res.status(400).json({ error: "Mot de passe requis." });
-
-  const { data, error } = await supabase
-    .from("direction_access")
-    .select("password_hash")
-    .eq("id", 1)
-    .single();
-
-  if (error || !data) {
-    return res.status(500).json({ error: "Accès Direction non configuré. Contacter l'administrateur." });
-  }
-
-  const valid = await bcrypt.compare(password, data.password_hash);
-  if (!valid) return res.status(401).json({ error: "Mot de passe incorrect." });
-
-  const token = jwt.sign({ role: "direction" }, JWT_SECRET, { expiresIn: "12h" });
-  res.json({ token });
-});
-
 // ── Sauvegarder un nouveau snapshot (après import Excel ou sync API) ──
-app.post("/api/snapshots", requireAuth, async (req, res) => {
+app.post("/api/snapshots", async (req, res) => {
   const { file_name, source, period_label, data } = req.body;
   if (!file_name || !data) {
     return res.status(400).json({ error: "file_name et data sont requis." });
@@ -92,7 +34,7 @@ app.post("/api/snapshots", requireAuth, async (req, res) => {
 });
 
 // ── Liste des snapshots (historique, sans le payload complet) ──
-app.get("/api/snapshots", requireAuth, async (_req, res) => {
+app.get("/api/snapshots", async (_req, res) => {
   const { data, error } = await supabase
     .from("kpi_snapshots")
     .select("id, created_at, file_name, source, period_label")
@@ -104,7 +46,7 @@ app.get("/api/snapshots", requireAuth, async (_req, res) => {
 });
 
 // ── Dernier snapshot complet (chargé au démarrage du dashboard) ──
-app.get("/api/snapshots/latest", requireAuth, async (_req, res) => {
+app.get("/api/snapshots/latest", async (_req, res) => {
   const { data, error } = await supabase
     .from("kpi_snapshots")
     .select("*")
@@ -118,7 +60,7 @@ app.get("/api/snapshots/latest", requireAuth, async (_req, res) => {
 });
 
 // ── Snapshot précis par ID (pour comparer des périodes) ──
-app.get("/api/snapshots/:id", requireAuth, async (req, res) => {
+app.get("/api/snapshots/:id", async (req, res) => {
   const { data, error } = await supabase
     .from("kpi_snapshots")
     .select("*")
@@ -129,14 +71,157 @@ app.get("/api/snapshots/:id", requireAuth, async (req, res) => {
   res.json(data);
 });
 
+// ── Lignes brutes de l'import (détail permanent, ligne par ligne) ──
+// Alimentées par lots depuis le Web Worker d'import juste après la création du snapshot
+// (un import de 545k lignes tient en ~110 lots de 5000, chacun bien sous la limite de
+// taille de requête). Permet un vrai drill-down filtré/paginé côté serveur, y compris
+// après rechargement de la page.
+app.post("/api/snapshots/:id/raw-rows", async (req, res) => {
+  const rows = req.body.rows;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: "rows (tableau non vide) est requis." });
+  }
+
+  const toInsert = rows.map((r) => ({
+    snapshot_id: req.params.id,
+    tracking: r.tracking || null,
+    reference: r.reference || null,
+    client: r.client || null,
+    expediteur: r.expediteur || null,
+    livreur: r.livreur || null,
+    station: r.station || null,
+    wilaya: r.wilaya || null,
+    commune: r.commune || null,
+    montant: r.montant ?? null,
+    statut: r.statut || null,
+    type: r.type || null,
+    prestation: r.prestation || null,
+    expedie_le: r.expedieLe || null,
+    dispatche_le: r.dispatcheLe || null,
+    livre_le: r.livreLe || null,
+    encaisse_le: r.encaisseLe || null,
+    retour_demande_le: r.retourDemandeLe || null,
+    is_dispatched: !!r.isDispatched,
+    is_livre: !!r.isLivre,
+    is_retour: !!r.isRetour,
+  }));
+
+  const { error } = await supabase.from("snapshot_rows").insert(toInsert);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ inserted: toInsert.length });
+});
+
+app.get("/api/snapshots/:id/raw-rows", async (req, res) => {
+  const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+  const pageSize = Math.min(200, Math.max(1, parseInt(String(req.query.pageSize || "50"), 10) || 50));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("snapshot_rows")
+    .select(
+      "tracking, reference, client, expediteur, livreur, station, wilaya, commune, montant, statut, type, prestation, expedie_le, dispatche_le, livre_le, encaisse_le, retour_demande_le, is_dispatched, is_livre, is_retour",
+      { count: "exact" }
+    )
+    .eq("snapshot_id", req.params.id);
+
+  if (req.query.livreur) query = query.eq("livreur", String(req.query.livreur));
+  // Lignes ignorées "sans livreur assigné" : le champ est stocké NULL (jamais une chaîne vide),
+  // donc un simple .eq("livreur", "") ne les trouverait pas.
+  if (req.query.noLivreur === "true") query = query.is("livreur", null);
+  if (req.query.station) query = query.eq("station", String(req.query.station));
+  if (req.query.statut) query = query.eq("statut", String(req.query.statut));
+  if (req.query.expediteur) query = query.eq("expediteur", String(req.query.expediteur));
+  if (req.query.commune) query = query.eq("commune", String(req.query.commune));
+  if (req.query.isDispatched !== undefined) query = query.eq("is_dispatched", req.query.isDispatched === "true");
+  if (req.query.isLivre !== undefined) query = query.eq("is_livre", req.query.isLivre === "true");
+  if (req.query.isRetour !== undefined) query = query.eq("is_retour", req.query.isRetour === "true");
+  if (req.query.search) {
+    const term = String(req.query.search).replace(/[%_,()]/g, "");
+    query = query.or(`tracking.ilike.%${term}%,reference.ilike.%${term}%,client.ilike.%${term}%,expediteur.ilike.%${term}%`);
+  }
+
+  const { data, error, count } = await query.order("id", { ascending: true }).range(from, to);
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({
+    rows: (data || []).map((r) => ({
+      tracking: r.tracking,
+      reference: r.reference,
+      client: r.client,
+      expediteur: r.expediteur,
+      livreur: r.livreur,
+      station: r.station,
+      wilaya: r.wilaya,
+      commune: r.commune,
+      montant: r.montant,
+      statut: r.statut,
+      type: r.type,
+      prestation: r.prestation,
+      expedieLe: r.expedie_le,
+      dispatcheLe: r.dispatche_le,
+      livreLe: r.livre_le,
+      encaisseLe: r.encaisse_le,
+      retourDemandeLe: r.retour_demande_le,
+      isDispatched: r.is_dispatched,
+      isLivre: r.is_livre,
+      isRetour: r.is_retour,
+    })),
+    total: count || 0,
+    page,
+    pageSize,
+  });
+});
+
+// ── Répartition par expéditeur ou par commune pour un livreur donné ──
+// Calculée à la volée depuis snapshot_rows (via une fonction Postgres) plutôt que d'être
+// embarquée dans le payload du snapshot : pour un gros import (500k+ lignes / 900+ livreurs),
+// le détail par livreur × expéditeur/zone ferait exploser la taille du JSON envoyé à
+// POST /api/snapshots au-delà de la limite de la plateforme, faisant échouer la sauvegarde.
+app.get("/api/snapshots/:id/breakdown", async (req, res) => {
+  const livreur = String(req.query.livreur || "");
+  const station = String(req.query.station || "");
+  const groupBy = req.query.groupBy === "zone" ? "zone" : "expediteur";
+  if (!livreur || !station) {
+    return res.status(400).json({ error: "livreur et station sont requis." });
+  }
+
+  const { data, error } = await supabase.rpc("snapshot_rows_breakdown", {
+    p_snapshot_id: req.params.id,
+    p_livreur: livreur,
+    p_station: station,
+    p_group_by: groupBy,
+  });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const rows = (data || []).map((r: any) => {
+    const dispatches = Number(r.dispatches) || 0;
+    const livres = Number(r.livres) || 0;
+    const retours = Number(r.retours) || 0;
+    return {
+      key: r.label,
+      label: r.label,
+      wilaya: r.wilaya || "",
+      dispatches,
+      livres,
+      retours,
+      taux_livraison: dispatches > 0 ? parseFloat(((livres / dispatches) * 100).toFixed(1)) : 0,
+      taux_retour: dispatches > 0 ? parseFloat(((retours / dispatches) * 100).toFixed(1)) : 0,
+    };
+  });
+
+  res.json({ rows });
+});
+
 // ── Seuils d'alerte ─────────────────────────────────────────
-app.get("/api/thresholds", requireAuth, async (_req, res) => {
+app.get("/api/thresholds", async (_req, res) => {
   const { data, error } = await supabase.from("alert_thresholds").select("*");
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-app.put("/api/thresholds/:key", requireAuth, async (req, res) => {
+app.put("/api/thresholds/:key", async (req, res) => {
   const { value } = req.body;
   if (typeof value !== "number") return res.status(400).json({ error: "value doit être un nombre." });
 

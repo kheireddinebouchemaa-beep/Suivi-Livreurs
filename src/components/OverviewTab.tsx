@@ -1,11 +1,46 @@
 import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
-import { AppData, LivreurRecap } from "../types";
+import { AppData, LivreurRecap, SkippedRowExample, KpiTrend } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
-import { TrendingUp, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Trophy, Activity, Table as TableIcon, FileText } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Table as TableIcon, FileText, Info, Search, Wallet, RefreshCcw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { exportOverviewExcel } from "../exportExcel";
 import { exportOverviewPdf } from "../exportPdf";
+import DrillDownModal from "./DrillDownModal";
+import LivreursActifsModal from "./LivreursActifsModal";
+import { RawRowsFilter } from "../lib/api";
+
+// Flèche de tendance : verte/rouge/grise selon le sens du mieux pour ce KPI (inverse=true pour
+// les métriques où une baisse est une amélioration, ex. un délai). Jamais de rouge pour une simple
+// variation — le rouge reste réservé aux couleurs "nécessite une action" définies par carte.
+function TrendArrow({ trend, unit = "", inverse = false }: { trend: KpiTrend | undefined; unit?: string; inverse?: boolean }) {
+  if (!trend || trend.variation === null) {
+    return <span className="text-[10px] text-slate-400 font-sans">Pas d'historique à comparer</span>;
+  }
+  const improving = inverse ? trend.variation < -0.05 : trend.variation > 0.05;
+  const worsening = inverse ? trend.variation > 0.05 : trend.variation < -0.05;
+  const Icon = improving ? TrendingUp : worsening ? TrendingDown : Minus;
+  const colorClass = improving ? "text-emerald-600" : worsening ? "text-amber-600" : "text-slate-400";
+  const sign = trend.variation > 0 ? "+" : "";
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold font-mono ${colorClass}`}>
+      <Icon className="w-3 h-3" />
+      {sign}{trend.variation.toFixed(1)}{unit} vs période précédente
+    </span>
+  );
+}
+
+// Libellés lisibles + unité + sens "mieux" pour chaque clé de src/lib/trends.ts
+const TREND_LABELS: { key: string; label: string; unit: string; inverse: boolean }[] = [
+  { key: "taux_livraison_global", label: "Taux de livraison", unit: "%", inverse: false },
+  { key: "soc_moyen", label: "SOC moyen", unit: "", inverse: false },
+  { key: "delai_restitution_cod", label: "Restitution COD", unit: "h", inverse: true },
+  { key: "taux_anomalie", label: "Taux d'anomalie", unit: "%", inverse: true },
+  { key: "montant_cod_livre", label: "Montant COD livré", unit: " DA", inverse: false },
+  { key: "taux_retour_global", label: "Taux de retour", unit: "%", inverse: true },
+  { key: "delai_moy", label: "Délai moyen dispatch→livré", unit: "h", inverse: true },
+  { key: "taux_communication", label: "Communication (SMS)", unit: "%", inverse: false },
+];
 
 function AnimatedNumber({ value, suffix = "", isDecimal = false }: { value: number; suffix?: string; isDecimal?: boolean }) {
   const [display, setDisplay] = useState(0);
@@ -42,41 +77,47 @@ function AnimatedNumber({ value, suffix = "", isDecimal = false }: { value: numb
 
 interface OverviewTabProps {
   data: AppData;
+  snapshotId: string | null;
+  // Tendances vs snapshot précédent, résumé en langage naturel et nb d'alertes : câblés ici (section 5
+  // de la spec KPI avancés), consommés par la refonte visuelle en 3 niveaux (section 6).
+  tendances: KpiTrend[];
+  resumeNaturel: string;
+  nbAlertes: number;
   onNavigateToLivreurs: () => void;
   onNavigateToRetours: () => void;
   onNavigateToDelais: () => void;
+  onNavigateToLignesIgnorees: () => void;
 }
 
-export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRetours, onNavigateToDelais }: OverviewTabProps) {
+export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel, nbAlertes, onNavigateToLivreurs, onNavigateToRetours, onNavigateToDelais, onNavigateToLignesIgnorees }: OverviewTabProps) {
   const lineChartRef = useRef<HTMLCanvasElement | null>(null);
   const barChartRef = useRef<HTMLCanvasElement | null>(null);
   const lineChartInstance = useRef<Chart | null>(null);
   const barChartInstance = useRef<Chart | null>(null);
+  const [showSkippedDetail, setShowSkippedDetail] = useState(false);
+  const [examplesModal, setExamplesModal] = useState<{ label: string; rows: SkippedRowExample[] } | null>(null);
+  const [drillDown, setDrillDown] = useState<{ title: string; filter: Omit<RawRowsFilter, "search" | "page" | "pageSize"> } | null>(null);
+  const [showLivreursActifs, setShowLivreursActifs] = useState(false);
+  const [selectedTranche, setSelectedTranche] = useState<string | null>(null);
 
   // 1. Calculer la distribution du taux de livraison
   // Tranches : <50%, 50-60%, 60-70%, 70-80%, 80-90%, 90-95%, >95%
   // Seulement pour livreurs avec dispatches >= 10
   const relevantLivreurs = data.recap.filter(l => l.dispatches >= 10);
-  const tranches = {
-    under50: 0,
-    r50_60: 0,
-    r60_70: 0,
-    r70_80: 0,
-    r80_90: 0,
-    r90_95: 0,
-    over95: 0
-  };
-
-  relevantLivreurs.forEach(l => {
-    const t = l.taux_livraison;
-    if (t < 50) tranches.under50++;
-    else if (t < 60) tranches.r50_60++;
-    else if (t < 70) tranches.r60_70++;
-    else if (t < 80) tranches.r70_80++;
-    else if (t < 90) tranches.r80_90++;
-    else if (t <= 95) tranches.r90_95++;
-    else tranches.over95++;
-  });
+  const TRANCHES = [
+    { label: "<50%", test: (t: number) => t < 50 },
+    { label: "50-60%", test: (t: number) => t >= 50 && t < 60 },
+    { label: "60-70%", test: (t: number) => t >= 60 && t < 70 },
+    { label: "70-80%", test: (t: number) => t >= 70 && t < 80 },
+    { label: "80-90%", test: (t: number) => t >= 80 && t < 90 },
+    { label: "90-95%", test: (t: number) => t >= 90 && t <= 95 },
+    { label: ">95%", test: (t: number) => t > 95 },
+  ];
+  const trancheCounts = TRANCHES.map(tr => relevantLivreurs.filter(l => tr.test(l.taux_livraison)).length);
+  const selectedTrancheDef = TRANCHES.find(tr => tr.label === selectedTranche);
+  const selectedTrancheLivreurs = selectedTrancheDef
+    ? relevantLivreurs.filter(l => selectedTrancheDef.test(l.taux_livraison)).sort((a, b) => b.taux_livraison - a.taux_livraison)
+    : [];
 
   // 2. Extraire les tops
   // Top 10 volume livré
@@ -184,19 +225,11 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
       barChartInstance.current = new Chart(barChartRef.current, {
         type: "bar",
         data: {
-          labels: ["<50%", "50-60%", "60-70%", "70-80%", "80-90%", "90-95%", ">95%"],
+          labels: TRANCHES.map(tr => tr.label),
           datasets: [
             {
               label: "Livreurs (≥ 10 dispatches)",
-              data: [
-                tranches.under50,
-                tranches.r50_60,
-                tranches.r60_70,
-                tranches.r70_80,
-                tranches.r80_90,
-                tranches.r90_95,
-                tranches.over95
-              ],
+              data: trancheCounts,
               backgroundColor: [
                 "#D93025", // <50% rouge
                 "#E8741A", // 50-60% orange
@@ -215,6 +248,17 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          onClick: (_evt, elements) => {
+            if (elements.length > 0) {
+              const idx = elements[0].index;
+              const tr = TRANCHES[idx];
+              if (tr) setSelectedTranche(tr.label);
+            }
+          },
+          onHover: (evt, elements) => {
+            const target = evt.native?.target as HTMLElement | undefined;
+            if (target) target.style.cursor = elements.length > 0 ? "pointer" : "default";
+          },
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -322,120 +366,216 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
         </div>
       </div>
 
-      {/* 1. Bandeau "Spotlight" (fond dégradé navy glass) */}
-      <div className="bg-gradient-to-r from-[#1B3A5C]/85 via-[#244C78]/85 to-[#1B3A5C]/85 backdrop-blur-md rounded-2xl p-6 text-white shadow-md relative overflow-hidden border border-white/10">
-        {/* Glow Effet */}
-        <div className="absolute right-0 top-0 -mr-20 -mt-20 w-80 h-80 bg-orange/20 rounded-full blur-3xl pointer-events-none"></div>
-        
-        <h3 className="text-xs uppercase tracking-wider font-bold text-orange-400 mb-4 font-sans">Spotlight Opérationnel</h3>
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-6 divide-y md:divide-y-0 md:divide-x divide-white/10">
-          <div className="pt-3 md:pt-0">
-            <span className="block text-xs text-slate-300">Livreurs actifs</span>
-            <span className="text-2xl font-bold font-mono text-white"><AnimatedNumber value={data.global.nb_livreurs} /></span>
-          </div>
-          
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Total Dispatchés</span>
-            <span className="text-2xl font-bold font-mono text-white"><AnimatedNumber value={data.global.total_dispatches} /></span>
-          </div>
+      {/* NIVEAU 1 — Résumé : toujours visible, sans scroll. Phrase auto-générée + 5 chiffres clés
+          avec tendance et repère, jamais un pourcentage nu. */}
+      <div className={`rounded-2xl p-4 flex items-center gap-3 border text-sm font-semibold font-sans ${
+        nbAlertes > 0 ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-emerald-50 border-emerald-200 text-emerald-900"
+      }`}>
+        {nbAlertes > 0 ? <AlertTriangle className="w-5 h-5 flex-shrink-0" /> : <CheckCircle className="w-5 h-5 flex-shrink-0" />}
+        {resumeNaturel}
+      </div>
 
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Total Livrés</span>
-            <span className="text-2xl font-bold font-mono text-[#18A558]"><AnimatedNumber value={data.global.total_livres} /></span>
-          </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Taux de livraison réseau */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase">Taux Livraison Réseau</p>
+          <h3 className={`text-2xl font-bold font-mono ${data.global.taux_global >= 90 ? "text-emerald-600" : data.global.taux_global >= 70 ? "text-[#E8741A]" : "text-red-600"}`}>
+            {F(data.global.taux_global)}%
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">Objectif ≥ 90%</p>
+          <TrendArrow trend={tendances.find(t => t.key === "taux_livraison_global")} unit="pts" />
+        </div>
 
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Taux Livraison</span>
-            <span className="text-2xl font-bold font-mono text-orange-450 text-[#E8741A]"><AnimatedNumber value={data.global.taux_global} isDecimal suffix="%" /></span>
-          </div>
+        {/* SOC moyen réseau */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase">SOC Moyen Réseau</p>
+          <h3 className={`text-2xl font-bold font-mono ${averageSOC >= 80 ? "text-emerald-600" : averageSOC >= 60 ? "text-[#E8741A]" : "text-red-600"}`}>
+            {F(averageSOC)} <span className="text-xs text-slate-400">/100</span>
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">Taux 30% · Rapidité 20% · Encaiss. 50%</p>
+          <TrendArrow trend={tendances.find(t => t.key === "soc_moyen")} unit="pts" />
+        </div>
 
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Total Retours</span>
-            <span className="text-2xl font-bold font-mono text-[#D93025]"><AnimatedNumber value={data.global.total_retours} /></span>
-          </div>
+        {/* Alertes actives */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase">Alertes Actives</p>
+          <h3 className={`text-2xl font-bold font-mono ${nbAlertes > 0 ? "text-red-600" : "text-emerald-600"}`}>
+            {N(nbAlertes)}
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">Livreurs sous les seuils configurés</p>
+          <span className="text-[10px] text-slate-400 font-sans">Voir le détail ci-dessous</span>
+        </div>
 
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Taux Retour</span>
-            <span className="text-2xl font-bold font-mono text-red-300">
-              <AnimatedNumber value={data.global.total_dispatches > 0 ? (data.global.total_retours / data.global.total_dispatches) * 100 : 0} isDecimal suffix="%" />
-            </span>
-          </div>
+        {/* Délai restitution COD moyen */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+            <RefreshCcw className="w-3 h-3" /> Restitution COD
+          </p>
+          <h3 className="text-2xl font-bold font-mono text-[#1B3A5C]">
+            {F(data.global.delai_restitution_cod_moy_h)}h
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">Encaissé → Versé à l'admin</p>
+          <TrendArrow trend={tendances.find(t => t.key === "delai_restitution_cod")} unit="h" inverse />
+        </div>
 
-          <div className="pt-3 md:pt-0 md:pl-4">
-            <span className="block text-xs text-slate-300">Délai Moyen</span>
-            <span className="text-2xl font-bold font-mono text-yellow-400"><AnimatedNumber value={data.global.delai_moy} isDecimal suffix="h" /></span>
-          </div>
+        {/* Montant COD des colis livrés (pas une marge : aucune charge n'est déduite) */}
+        <div className="glass-panel rounded-xl p-4 space-y-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+            <Wallet className="w-3 h-3" /> Montant COD Livré
+          </p>
+          <h3 className="text-2xl font-bold font-mono text-[#1B3A5C]">
+            {N(data.global.montant_cod_livre_total)}
+          </h3>
+          <p className="text-[10px] text-slate-500 font-sans">DA encaissés pour les colis livrés</p>
+          <TrendArrow trend={tendances.find(t => t.key === "montant_cod_livre")} unit=" DA" />
         </div>
       </div>
 
-      {/* 2. Grille de 9 KPI cards (3x3) avec animations et bande de couleur en haut */}
-      <motion.div 
+      {/* Traçabilité de l'import : lignes du fichier vs lignes comptabilisées */}
+      {(data.global.lignes_ignorees_sans_livreur > 0 || data.global.lignes_ignorees_sans_dispatch > 0) && (
+        <div className="bg-slate-100/70 border border-slate-200 text-slate-600 rounded-xl px-4 py-2.5 text-[11px] leading-relaxed">
+          <div className="flex items-start gap-2">
+            <button
+              onClick={() => setShowSkippedDetail(v => !v)}
+              className="flex-1 flex items-start gap-2 text-left cursor-pointer"
+            >
+              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>{N(data.global.lignes_fichier)}</strong> lignes lues dans le fichier importé, dont{" "}
+                <strong>{N(data.global.total_dispatches)}</strong> comptabilisées comme "Dispatchés" (colis avec une date "Dispatché au livreur le").{" "}
+                {data.global.lignes_ignorees_sans_livreur > 0 && (
+                  <>{N(data.global.lignes_ignorees_sans_livreur)} lignes ignorées sans livreur assigné. </>
+                )}
+                {data.global.lignes_ignorees_sans_dispatch > 0 && (
+                  <>{N(data.global.lignes_ignorees_sans_dispatch)} lignes ignorées car jamais dispatchées (colis pas encore pris en charge). </>
+                )}
+                <span className="underline font-semibold text-[#1B3A5C]">{showSkippedDetail ? "Masquer l'aperçu" : "Aperçu rapide par statut"}</span>
+              </span>
+            </button>
+            <button
+              onClick={onNavigateToLignesIgnorees}
+              className="flex-shrink-0 px-3 py-1.5 bg-[#1B3A5C] text-white rounded-lg text-[11px] font-bold hover:bg-[#244C78] transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Page dédiée — détail complet →
+            </button>
+          </div>
+
+          {showSkippedDetail && (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {data.global.statuts_sans_livreur.length > 0 && (
+                <div className="bg-white/60 border border-slate-200 rounded-lg p-3">
+                  <p className="font-bold text-[#1B3A5C] text-[10px] uppercase tracking-wide mb-2">
+                    Sans livreur assigné ({N(data.global.lignes_ignorees_sans_livreur)}) — par statut
+                  </p>
+                  <ul className="space-y-1">
+                    {data.global.statuts_sans_livreur.map(s => (
+                      <li key={s.statut}>
+                        <button
+                          onClick={() => s.examples.length > 0 && setExamplesModal({ label: `Sans livreur assigné — ${s.statut}`, rows: s.examples })}
+                          disabled={s.examples.length === 0}
+                          className="w-full flex justify-between items-center hover:bg-slate-100 rounded px-1 -mx-1 py-0.5 disabled:cursor-default cursor-pointer transition-colors"
+                        >
+                          <span className="truncate pr-2 text-left">
+                            {s.statut} {s.examples.length > 0 && <span className="text-[#1B3A5C] underline">(voir exemples)</span>}
+                          </span>
+                          <span className="font-mono font-bold text-[#1B3A5C] flex-shrink-0">{N(s.count)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {data.global.statuts_sans_dispatch.length > 0 && (
+                <div className="bg-white/60 border border-slate-200 rounded-lg p-3">
+                  <p className="font-bold text-[#1B3A5C] text-[10px] uppercase tracking-wide mb-2">
+                    Jamais dispatchées ({N(data.global.lignes_ignorees_sans_dispatch)}) — par statut
+                  </p>
+                  <ul className="space-y-1">
+                    {data.global.statuts_sans_dispatch.map(s => (
+                      <li key={s.statut}>
+                        <button
+                          onClick={() => s.examples.length > 0 && setExamplesModal({ label: `Jamais dispatchées — ${s.statut}`, rows: s.examples })}
+                          disabled={s.examples.length === 0}
+                          className="w-full flex justify-between items-center hover:bg-slate-100 rounded px-1 -mx-1 py-0.5 disabled:cursor-default cursor-pointer transition-colors"
+                        >
+                          <span className="truncate pr-2 text-left">
+                            {s.statut} {s.examples.length > 0 && <span className="text-[#1B3A5C] underline">(voir exemples)</span>}
+                          </span>
+                          <span className="font-mono font-bold text-[#1B3A5C] flex-shrink-0">{N(s.count)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 2. Grille de KPI cards avec animations et bande de couleur en haut.
+          Taux Livraison Global et SOC Moyen Réseau ne sont pas répétés ici : déjà visibles en
+          Niveau 1 juste au-dessus, toujours sans scroll. */}
+      <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="show"
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
       >
-        {/* Taux livraison global */}
-        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
-          <div className="h-1.5 bg-emerald-500 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Taux Livraison Global</p>
-              <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.taux_global} isDecimal suffix="%" /></h3>
-              <p className="text-[10px] text-emerald-600 mt-1 flex items-center font-sans font-medium">
-                <CheckCircle className="w-3 h-3 mr-1" /> Performance cible : ≥ 90%
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-        </motion.div>
-
         {/* Total dispatchés */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-sky-600 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setDrillDown({ title: "Total Dispatchés — détail", filter: { isDispatched: true } })}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Total Dispatchés</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Total Dispatchés <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.total_dispatches} /></h3>
               <p className="text-[10px] text-slate-500 mt-1 font-sans">Colis confiés au réseau</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-sky-50 flex items-center justify-center text-sky-600">
               <Package className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* Total livrés */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-emerald-600 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setDrillDown({ title: "Total Livrés — détail", filter: { isLivre: true } })}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Total Livrés</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Total Livrés <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-emerald-600 mt-1"><AnimatedNumber value={data.global.total_livres} /></h3>
               <p className="text-[10px] text-emerald-500 mt-1 font-sans">Remises clients effectives</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
               <CheckCircle className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* Total retours */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-red-500 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setDrillDown({ title: "Total Retours — détail", filter: { isRetour: true } })}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Total Retours</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Total Retours <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-red-600 mt-1"><AnimatedNumber value={data.global.total_retours} /></h3>
-              <p className="text-[10px] text-red-500 mt-1 font-sans">Retours initiés & confirmés</p>
+              <p className="text-[10px] text-red-500 mt-1 font-sans">
+                {F(data.global.total_dispatches > 0 ? (data.global.total_retours / data.global.total_dispatches) * 100 : 0)}% des dispatchés
+              </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600">
               <AlertTriangle className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* Délai moyen dispatch -> livré */}
@@ -471,52 +611,37 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
         {/* Livreurs actifs */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-teal-500 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setShowLivreursActifs(true)}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Livreurs Actifs</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Livreurs Actifs <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.nb_livreurs} /></h3>
               <p className="text-[10px] text-teal-600 mt-1 font-sans">Dans l'export analysé</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
               <Users className="w-5 h-5" />
             </div>
-          </div>
+          </button>
         </motion.div>
 
         {/* Non livrés */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-purple-500 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
+          <button
+            onClick={() => setDrillDown({ title: "Colis Non Livrés — détail", filter: { isDispatched: true, isLivre: false } })}
+            className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase">Colis Non Livrés</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Colis Non Livrés <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.non_livres} /></h3>
               <p className="text-[10px] text-purple-600 mt-1 font-sans">Différence (Dispatch - Livré)</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
               <Package className="w-5 h-5" />
             </div>
-          </div>
-        </motion.div>
-
-        {/* SOC MOYEN RESEAU (9ème carte) */}
-        <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300 bg-indigo-50/20 border border-indigo-200/50">
-          <div className="h-1.5 bg-indigo-600 w-full"></div>
-          <div className="p-4 flex justify-between items-center">
-            <div>
-              <p className="text-xs font-semibold text-indigo-700 uppercase flex items-center gap-1">
-                <Activity className="w-3.5 h-3.5" /> SOC Moyen Réseau
-              </p>
-              <h3 className="text-3xl font-black font-mono text-indigo-900 mt-1">
-                <AnimatedNumber value={averageSOC} isDecimal suffix=" / 100" />
-              </h3>
-              <p className="text-[10px] text-slate-500 mt-1 font-sans font-medium">
-                Taux 30% · Rapidité 20% · Encaissement 50%
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-750">
-              <Trophy className="w-5 h-5 text-indigo-600" />
-            </div>
-          </div>
+          </button>
         </motion.div>
       </motion.div>
 
@@ -539,12 +664,39 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
         <div className="glass-panel p-5 rounded-xl">
           <div className="mb-4 pb-3 border-b border-[#F0F3F8]">
             <h4 className="font-bold text-[#1B3A5C] text-sm font-sans">Distribution des taux de livraison</h4>
-            <p className="text-[11px] text-[#6B7A99]">Répartition des livreurs selon leur performance (dispatches ≥ 10)</p>
+            <p className="text-[11px] text-[#6B7A99]">Répartition des livreurs selon leur performance (dispatches ≥ 10) — cliquez une barre pour voir les livreurs concernés</p>
           </div>
           <div className="h-72 relative">
             <canvas ref={barChartRef}></canvas>
           </div>
         </div>
+      </div>
+
+      {/* NIVEAU 2 — Contexte : comparaison compacte avec la période précédente */}
+      <div className="glass-panel rounded-xl p-5">
+        <div className="mb-4 pb-3 border-b border-[#F0F3F8]">
+          <h4 className="font-bold text-[#1B3A5C] text-sm font-sans">Comparaison période précédente</h4>
+          <p className="text-[11px] text-[#6B7A99]">Écart avec le dernier import enregistré avant celui-ci</p>
+        </div>
+        {tendances.length === 0 ? (
+          <p className="text-xs text-slate-400 font-sans py-2">Pas encore d'historique pour comparer — importez à nouveau pour voir apparaître les tendances.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {TREND_LABELS.filter(t => tendances.some(tr => tr.key === t.key)).map(({ key, label, unit, inverse }) => {
+              const trend = tendances.find(tr => tr.key === key)!;
+              return (
+                <div key={key} className="border border-[#F0F3F8] rounded-lg p-3">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase truncate">{label}</p>
+                  <p className="text-sm font-bold font-mono text-[#1B3A5C] mt-0.5">
+                    {trend.valeurActuelle.toLocaleString("fr-DZ")}{unit}
+                    <span className="text-[10px] text-slate-400 font-normal ml-1">(était {trend.valeurPrecedente?.toLocaleString("fr-DZ")}{unit})</span>
+                  </p>
+                  <TrendArrow trend={trend} unit={unit} inverse={inverse} />
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 4. Mini tableaux (Top 10 Volume, Top 10 Retours, Top 10 Plus Lents) */}
@@ -671,6 +823,139 @@ export default function OverviewTab({ data, onNavigateToLivreurs, onNavigateToRe
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-xs font-semibold font-sans">{localToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modale d'exemples de lignes brutes ignorées */}
+      <AnimatePresence>
+        {examplesModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-[#1B3A5C]/30 backdrop-blur-md flex items-center justify-center z-50 p-4"
+            onClick={() => setExamplesModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="bg-[#1B3A5C] text-white px-4 py-3 flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h3 className="font-bold text-sm">{examplesModal.label}</h3>
+                  <p className="text-[10px] text-slate-300">Échantillon de {examplesModal.rows.length} lignes brutes du fichier importé</p>
+                </div>
+                <button onClick={() => setExamplesModal(null)} className="text-white/80 hover:text-white p-1 hover:bg-white/10 rounded cursor-pointer">✕</button>
+              </div>
+              <div className="overflow-auto flex-1 custom-scrollbar">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-slate-100 sticky top-0">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Tracking</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Client</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livreur</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Station</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Expédié le</th>
+                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livré le</th>
+                      <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Montant</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {examplesModal.rows.map((r, i) => (
+                      <tr key={i} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="px-3 py-1.5 font-mono">{r.tracking || "–"}</td>
+                        <td className="px-3 py-1.5">{r.client || "–"}</td>
+                        <td className="px-3 py-1.5">{r.livreur || "–"}</td>
+                        <td className="px-3 py-1.5">{r.station || "–"}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.expedieLe || "–"}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.livreLe || "–"}</td>
+                        <td className="px-3 py-1.5 text-right font-mono">{r.montant ? N(r.montant) : "–"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Drill-down générique : détail ligne par ligne depuis une carte KPI */}
+      <AnimatePresence>
+        {drillDown && (
+          <DrillDownModal
+            snapshotId={snapshotId}
+            title={drillDown.title}
+            filter={drillDown.filter}
+            onClose={() => setDrillDown(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Liste des livreurs actifs avec leur dernière activité */}
+      <AnimatePresence>
+        {showLivreursActifs && (
+          <LivreursActifsModal livreurs={data.recap} onClose={() => setShowLivreursActifs(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* Livreurs d'une tranche de taux de livraison (clic sur une barre du graphe de distribution) */}
+      <AnimatePresence>
+        {selectedTranche && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-[#1B3A5C]/30 backdrop-blur-md flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedTranche(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="bg-[#1B3A5C] text-white px-4 py-3 flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h3 className="font-bold text-sm">Livreurs — taux de livraison {selectedTranche} ({N(selectedTrancheLivreurs.length)})</h3>
+                  <p className="text-[10px] text-slate-300">Livreurs avec au moins 10 dispatches, triés par taux décroissant</p>
+                </div>
+                <button onClick={() => setSelectedTranche(null)} className="text-white/80 hover:text-white p-1 hover:bg-white/10 rounded cursor-pointer">✕</button>
+              </div>
+              <div className="overflow-auto flex-1 custom-scrollbar">
+                {selectedTrancheLivreurs.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-400">Aucun livreur dans cette tranche.</div>
+                ) : (
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-slate-100 sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livreur</th>
+                        <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Station</th>
+                        <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Dispatchés</th>
+                        <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Livrés</th>
+                        <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Taux livr.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedTrancheLivreurs.map((l) => (
+                        <tr key={l.id} className="border-t border-slate-100 hover:bg-slate-50">
+                          <td className="px-3 py-1.5 font-semibold text-[#1B3A5C]">{l.livreur}</td>
+                          <td className="px-3 py-1.5 text-slate-600">{l.station}</td>
+                          <td className="px-3 py-1.5 text-right font-mono">{N(l.dispatches)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-emerald-600">{N(l.livres)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono font-bold">{F(l.taux_livraison)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
