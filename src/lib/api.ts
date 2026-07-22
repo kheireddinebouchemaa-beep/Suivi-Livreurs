@@ -1,7 +1,28 @@
 import { AppData, FlatRow, BreakdownRow } from "../types";
 
+// Délai maximum avant d'abandonner une requête qui ne répond pas du tout (ni succès ni erreur).
+// Sans ça, une requête qui reste "pending" indéfiniment (connexion coupée sans RST, fonction
+// serverless qui ne répond jamais...) bloque l'appelant pour toujours — au démarrage de l'app,
+// ça se traduit par un écran de chargement qui ne se termine jamais ("l'application ne se lance
+// pas"), puisque le useEffect de boot attend la résolution de getLatestSnapshot()/getThresholds()
+// avant de désactiver bootLoading.
+const REQUEST_TIMEOUT_MS = 20000;
+
+async function timedFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(path, { ...options, signal: controller.signal });
+  } catch (err: any) {
+    if (err?.name === "AbortError") throw new Error("Délai d'attente dépassé (le serveur ne répond pas)");
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function apiFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(path, {
+  const res = await timedFetch(path, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -32,7 +53,7 @@ async function apiFetchWithRetry(path: string, options: RequestInit = {}) {
   let lastErr: any;
   for (let attempt = 0; attempt < RETRY_DELAYS_MS.length + 1; attempt++) {
     try {
-      const res = await fetch(path, {
+      const res = await timedFetch(path, {
         ...options,
         headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       });
