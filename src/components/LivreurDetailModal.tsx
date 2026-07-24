@@ -13,14 +13,19 @@ interface LivreurDetailModalProps {
 
 const PAGE_SIZE = 50;
 
+// Doit correspondre au pseudo-livreur utilisé dans parser.ts pour les colis sans livreur assigné.
+// Ces colis sont stockés avec un champ livreur NULL en base (pas la chaîne "(Sans livreur)"), donc
+// on ne peut pas les retrouver par une simple égalité — voir noLivreur ci-dessous.
+const SANS_LIVREUR_LABEL = "(Sans livreur)";
+
 type Tab = "colis" | "expediteurs" | "communes";
-type StatusChip = "tous" | "livres" | "retours" | "non_livres";
+type StatusChip = "tous" | "livres" | "retours" | "en_traitement";
 
 const STATUS_FILTERS: Record<StatusChip, { label: string; filter: { isLivre?: boolean; isRetour?: boolean } }> = {
   tous: { label: "Tous", filter: {} },
   livres: { label: "Livrés", filter: { isLivre: true } },
   retours: { label: "Retours", filter: { isRetour: true } },
-  non_livres: { label: "Non livrés", filter: { isLivre: false } },
+  en_traitement: { label: "En traitement", filter: { isLivre: false, isRetour: false } },
 };
 
 function BreakdownTable({ rows, groupLabel, showWilaya }: { rows: BreakdownRow[]; groupLabel: string; showWilaya: boolean }) {
@@ -100,9 +105,8 @@ export default function LivreurDetailModal({ snapshotId, livreur, onClose }: Liv
     setRowsError(null);
     const timeout = setTimeout(() => {
       queryRawRows(snapshotId, {
-        livreur: livreur.livreur,
+        ...(livreur.livreur === SANS_LIVREUR_LABEL ? { noLivreur: true } : { livreur: livreur.livreur }),
         station: livreur.station,
-        isDispatched: true,
         ...STATUS_FILTERS[statusChip].filter,
         search,
         page,

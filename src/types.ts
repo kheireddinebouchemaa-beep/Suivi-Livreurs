@@ -22,24 +22,10 @@ export interface FlatRow {
   isRetour: boolean;
 }
 
-export interface SkippedRowExample {
-  tracking: string;
-  reference: string;
-  client: string;
-  livreur: string;
-  station: string;
-  expedieLe: string;
-  livreLe: string;
-  montant: number;
-  statut: string;
-}
-
-export interface StatutBreakdown {
-  statut: string;
-  count: number;
-  examples: SkippedRowExample[]; // échantillon de lignes brutes (25 max) pour inspection
-}
-
+// Chaque colis a une fin de vie unique : livré, retourné, ou encore en traitement — peu importe
+// s'il a été formellement dispatché à un livreur. total_dispatches représente donc le nombre
+// TOTAL de colis du réseau (le nom du champ est conservé pour éviter un renommage en cascade
+// dans toute l'app, mais il ne désigne plus "colis dispatchés" au sens strict).
 export interface GlobalKPIs {
   total_dispatches: number;
   total_livres: number;
@@ -48,12 +34,8 @@ export interface GlobalKPIs {
   taux_global: number;
   delai_moy: number;
   delai_encaiss_moy: number;
-  non_livres: number;
+  non_livres: number;               // colis ni livrés ni retournés : encore en traitement
   lignes_fichier: number;           // nb total de lignes lues dans le fichier importé
-  lignes_ignorees_sans_livreur: number;   // lignes sans livreur assigné (non comptabilisées)
-  lignes_ignorees_sans_dispatch: number;  // lignes avec livreur mais jamais dispatchées (non comptabilisées)
-  statuts_sans_livreur: StatutBreakdown[];   // répartition par "Statut" des lignes sans livreur
-  statuts_sans_dispatch: StatutBreakdown[];  // répartition par "Statut" des lignes jamais dispatchées
   delai_restitution_cod_moy_h: number;    // Encaissé le → Versé à l'admin le
   taux_anomalie: number;                   // % colis avec Remarque non vide
   cout_livraison_moyen: number;            // Rémunération livreur total / colis livrés
@@ -71,6 +53,7 @@ export interface LivreurRecap {
   dispatches: number;
   livres: number;
   retours: number;
+  en_traitement: number;   // ni livré ni retour : le colis n'a pas encore de fin de vie
   taux_livraison: number;
   taux_retour: number;
   delai_moy_h: number; // dispatche -> livre
@@ -163,6 +146,14 @@ export interface ZoneRecap {
   niveauRisque: "faible" | "moyen" | "eleve";
 }
 
+// Un point du rapport "Reçus vs En traitement" : historique complet (non plafonné à 60 jours,
+// contrairement à DailyTrend), regroupable par jour/semaine/mois côté UI.
+export interface ReceptionJour {
+  date: string;           // ISO YYYY-MM-DD (jour d'entrée du colis dans le système, "Expédié le")
+  recus: number;          // nb de colis reçus ce jour-là
+  en_traitement: number;  // parmi eux, combien sont encore en traitement à ce jour (au moment de l'import)
+}
+
 export interface AppData {
   global: GlobalKPIs;
   recap: LivreurRecap[];
@@ -170,6 +161,7 @@ export interface AppData {
   by_station: StationRecap[];
   expediteurs: ExpediteurRecap[];
   zones: ZoneRecap[];
+  reception_journaliere: ReceptionJour[];
   tendances?: KpiTrend[];         // calculé côté frontend au chargement, pas dans parser.ts
   resumeNaturel?: string;         // phrase auto-générée
 }

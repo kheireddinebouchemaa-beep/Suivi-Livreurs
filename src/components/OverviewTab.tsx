@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
-import { AppData, LivreurRecap, SkippedRowExample, KpiTrend } from "../types";
+import { AppData, LivreurRecap, KpiTrend } from "../types";
 import { N, F, P, getPerfCategory } from "../utils";
-import { TrendingUp, TrendingDown, Minus, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Table as TableIcon, FileText, Info, Search, Wallet, RefreshCcw } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Users, Clock, AlertTriangle, CheckCircle, Package, ArrowUpRight, Table as TableIcon, FileText, Search, Wallet, RefreshCcw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { exportOverviewExcel } from "../exportExcel";
 import { exportOverviewPdf } from "../exportPdf";
@@ -86,16 +86,13 @@ interface OverviewTabProps {
   onNavigateToLivreurs: () => void;
   onNavigateToRetours: () => void;
   onNavigateToDelais: () => void;
-  onNavigateToLignesIgnorees: () => void;
 }
 
-export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel, nbAlertes, onNavigateToLivreurs, onNavigateToRetours, onNavigateToDelais, onNavigateToLignesIgnorees }: OverviewTabProps) {
+export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel, nbAlertes, onNavigateToLivreurs, onNavigateToRetours, onNavigateToDelais }: OverviewTabProps) {
   const lineChartRef = useRef<HTMLCanvasElement | null>(null);
   const barChartRef = useRef<HTMLCanvasElement | null>(null);
   const lineChartInstance = useRef<Chart | null>(null);
   const barChartInstance = useRef<Chart | null>(null);
-  const [showSkippedDetail, setShowSkippedDetail] = useState(false);
-  const [examplesModal, setExamplesModal] = useState<{ label: string; rows: SkippedRowExample[] } | null>(null);
   const [drillDown, setDrillDown] = useState<{ title: string; filter: Omit<RawRowsFilter, "search" | "page" | "pageSize"> } | null>(null);
   const [showLivreursActifs, setShowLivreursActifs] = useState(false);
   const [selectedTranche, setSelectedTranche] = useState<string | null>(null);
@@ -431,88 +428,6 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         </div>
       </div>
 
-      {/* Traçabilité de l'import : lignes du fichier vs lignes comptabilisées */}
-      {(data.global.lignes_ignorees_sans_livreur > 0 || data.global.lignes_ignorees_sans_dispatch > 0) && (
-        <div className="bg-slate-100/70 border border-slate-200 text-slate-600 rounded-xl px-4 py-2.5 text-[11px] leading-relaxed">
-          <div className="flex items-start gap-2">
-            <button
-              onClick={() => setShowSkippedDetail(v => !v)}
-              className="flex-1 flex items-start gap-2 text-left cursor-pointer"
-            >
-              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              <span>
-                <strong>{N(data.global.lignes_fichier)}</strong> lignes lues dans le fichier importé, dont{" "}
-                <strong>{N(data.global.total_dispatches)}</strong> comptabilisées comme "Dispatchés" (colis avec une date "Dispatché au livreur le").{" "}
-                {data.global.lignes_ignorees_sans_livreur > 0 && (
-                  <>{N(data.global.lignes_ignorees_sans_livreur)} lignes ignorées sans livreur assigné. </>
-                )}
-                {data.global.lignes_ignorees_sans_dispatch > 0 && (
-                  <>{N(data.global.lignes_ignorees_sans_dispatch)} lignes ignorées car jamais dispatchées (colis pas encore pris en charge). </>
-                )}
-                <span className="underline font-semibold text-[#1B3A5C]">{showSkippedDetail ? "Masquer l'aperçu" : "Aperçu rapide par statut"}</span>
-              </span>
-            </button>
-            <button
-              onClick={onNavigateToLignesIgnorees}
-              className="flex-shrink-0 px-3 py-1.5 bg-[#1B3A5C] text-white rounded-lg text-[11px] font-bold hover:bg-[#244C78] transition-colors cursor-pointer whitespace-nowrap"
-            >
-              Page dédiée — détail complet →
-            </button>
-          </div>
-
-          {showSkippedDetail && (
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-              {data.global.statuts_sans_livreur.length > 0 && (
-                <div className="bg-white/60 border border-slate-200 rounded-lg p-3">
-                  <p className="font-bold text-[#1B3A5C] text-[10px] uppercase tracking-wide mb-2">
-                    Sans livreur assigné ({N(data.global.lignes_ignorees_sans_livreur)}) — par statut
-                  </p>
-                  <ul className="space-y-1">
-                    {data.global.statuts_sans_livreur.map(s => (
-                      <li key={s.statut}>
-                        <button
-                          onClick={() => s.examples.length > 0 && setExamplesModal({ label: `Sans livreur assigné — ${s.statut}`, rows: s.examples })}
-                          disabled={s.examples.length === 0}
-                          className="w-full flex justify-between items-center hover:bg-slate-100 rounded px-1 -mx-1 py-0.5 disabled:cursor-default cursor-pointer transition-colors"
-                        >
-                          <span className="truncate pr-2 text-left">
-                            {s.statut} {s.examples.length > 0 && <span className="text-[#1B3A5C] underline">(voir exemples)</span>}
-                          </span>
-                          <span className="font-mono font-bold text-[#1B3A5C] flex-shrink-0">{N(s.count)}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {data.global.statuts_sans_dispatch.length > 0 && (
-                <div className="bg-white/60 border border-slate-200 rounded-lg p-3">
-                  <p className="font-bold text-[#1B3A5C] text-[10px] uppercase tracking-wide mb-2">
-                    Jamais dispatchées ({N(data.global.lignes_ignorees_sans_dispatch)}) — par statut
-                  </p>
-                  <ul className="space-y-1">
-                    {data.global.statuts_sans_dispatch.map(s => (
-                      <li key={s.statut}>
-                        <button
-                          onClick={() => s.examples.length > 0 && setExamplesModal({ label: `Jamais dispatchées — ${s.statut}`, rows: s.examples })}
-                          disabled={s.examples.length === 0}
-                          className="w-full flex justify-between items-center hover:bg-slate-100 rounded px-1 -mx-1 py-0.5 disabled:cursor-default cursor-pointer transition-colors"
-                        >
-                          <span className="truncate pr-2 text-left">
-                            {s.statut} {s.examples.length > 0 && <span className="text-[#1B3A5C] underline">(voir exemples)</span>}
-                          </span>
-                          <span className="font-mono font-bold text-[#1B3A5C] flex-shrink-0">{N(s.count)}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* 2. Grille de KPI cards avec animations et bande de couleur en haut.
           Taux Livraison Global et SOC Moyen Réseau ne sont pas répétés ici : déjà visibles en
           Niveau 1 juste au-dessus, toujours sans scroll. */}
@@ -522,15 +437,15 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
         animate="show"
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
       >
-        {/* Total dispatchés */}
+        {/* Total colis */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-sky-600 w-full"></div>
           <button
-            onClick={() => setDrillDown({ title: "Total Dispatchés — détail", filter: { isDispatched: true } })}
+            onClick={() => setDrillDown({ title: "Total Colis — détail", filter: {} })}
             className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
           >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Total Dispatchés <Search className="w-2.5 h-2.5 text-slate-400" /></p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Total Colis <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.total_dispatches} /></h3>
               <p className="text-[10px] text-slate-500 mt-1 font-sans">Colis confiés au réseau</p>
             </div>
@@ -626,17 +541,17 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
           </button>
         </motion.div>
 
-        {/* Non livrés */}
+        {/* En traitement */}
         <motion.div variants={cardVariants} className="glass-panel rounded-xl overflow-hidden relative hover:shadow-md transition-all duration-300">
           <div className="h-1.5 bg-purple-500 w-full"></div>
           <button
-            onClick={() => setDrillDown({ title: "Colis Non Livrés — détail", filter: { isDispatched: true, isLivre: false } })}
+            onClick={() => setDrillDown({ title: "Colis En Traitement — détail", filter: { isLivre: false, isRetour: false } })}
             className="w-full p-4 flex justify-between items-center text-left cursor-pointer"
           >
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Colis Non Livrés <Search className="w-2.5 h-2.5 text-slate-400" /></p>
+              <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">Colis En Traitement <Search className="w-2.5 h-2.5 text-slate-400" /></p>
               <h3 className="text-3xl font-bold font-mono text-[#1B3A5C] mt-1"><AnimatedNumber value={data.global.non_livres} /></h3>
-              <p className="text-[10px] text-purple-600 mt-1 font-sans">Différence (Dispatch - Livré)</p>
+              <p className="text-[10px] text-purple-600 mt-1 font-sans">Ni livrés, ni retournés</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
               <Package className="w-5 h-5" />
@@ -823,63 +738,6 @@ export default function OverviewTab({ data, snapshotId, tendances, resumeNaturel
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-xs font-semibold font-sans">{localToast}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modale d'exemples de lignes brutes ignorées */}
-      <AnimatePresence>
-        {examplesModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-[#1B3A5C]/30 backdrop-blur-md flex items-center justify-center z-50 p-4"
-            onClick={() => setExamplesModal(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col"
-            >
-              <div className="bg-[#1B3A5C] text-white px-4 py-3 flex justify-between items-center flex-shrink-0">
-                <div>
-                  <h3 className="font-bold text-sm">{examplesModal.label}</h3>
-                  <p className="text-[10px] text-slate-300">Échantillon de {examplesModal.rows.length} lignes brutes du fichier importé</p>
-                </div>
-                <button onClick={() => setExamplesModal(null)} className="text-white/80 hover:text-white p-1 hover:bg-white/10 rounded cursor-pointer">✕</button>
-              </div>
-              <div className="overflow-auto flex-1 custom-scrollbar">
-                <table className="w-full text-[11px]">
-                  <thead className="bg-slate-100 sticky top-0">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Tracking</th>
-                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Client</th>
-                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livreur</th>
-                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Station</th>
-                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Expédié le</th>
-                      <th className="text-left px-3 py-2 font-bold text-[#1B3A5C]">Livré le</th>
-                      <th className="text-right px-3 py-2 font-bold text-[#1B3A5C]">Montant</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {examplesModal.rows.map((r, i) => (
-                      <tr key={i} className="border-t border-slate-100 hover:bg-slate-50">
-                        <td className="px-3 py-1.5 font-mono">{r.tracking || "–"}</td>
-                        <td className="px-3 py-1.5">{r.client || "–"}</td>
-                        <td className="px-3 py-1.5">{r.livreur || "–"}</td>
-                        <td className="px-3 py-1.5">{r.station || "–"}</td>
-                        <td className="px-3 py-1.5 font-mono">{r.expedieLe || "–"}</td>
-                        <td className="px-3 py-1.5 font-mono">{r.livreLe || "–"}</td>
-                        <td className="px-3 py-1.5 text-right font-mono">{r.montant ? N(r.montant) : "–"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

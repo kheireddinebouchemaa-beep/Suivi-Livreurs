@@ -1,4 +1,4 @@
-import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, SkippedRowExample, FlatRow, ExpediteurRecap, ZoneRecap } from "./types";
+import { AppData, LivreurRecap, DailyTrend, StationRecap, GlobalKPIs, FlatRow, ExpediteurRecap, ZoneRecap, ReceptionJour } from "./types";
 import { getSOC, getScoreRapidite, getScoreEncaissement } from "./utils";
 
 // Fonction utilitaire pour parser les valeurs numériques
@@ -165,6 +165,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     dispatches: number;
     livres: number;
     retours: number;
+    enTraitement: number;
     delaisDisp: number[];
     delaisFdr: number[];
     delaisEnc: number[];
@@ -187,6 +188,10 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
   const stationsMap: Record<string, { livreurs: Set<string>; dispatches: number; livres: number; retours: number; delais: number[] }> = {};
   // Nb de colis par jour et par station, pour l'écart-type de charge journalière (équilibrage)
   const stationDailyMap: Record<string, Record<string, number>> = {};
+  // Historique complet (non plafonné) reçus/en traitement par jour, pour le rapport dédié avec
+  // bascule jour/semaine/mois — contrairement à dailyTrendMap qui ne garde que les 60 derniers
+  // jours pour le graphe de la Vue d'ensemble.
+  const dailyReceptionMap: Record<string, { recus: number; enTraitement: number }> = {};
 
   // Agrégats réseau par expéditeur / par zone (Volets B/C). Le détail par livreur ×
   // expéditeur/zone (Volet A) n'est plus embarqué ici : pour un gros import (500k+ lignes,
@@ -211,35 +216,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   let stepIncrement = Math.max(1, Math.floor(totalLines / 40));
 
-  let skippedNoLivreur = 0;
-  let skippedNoDispatch = 0;
-  const skippedNoLivreurByStatut: Record<string, number> = {};
-  const skippedNoDispatchByStatut: Record<string, number> = {};
-  // Quelques lignes brutes conservées à titre d'exemple par (raison d'exclusion, statut),
-  // pour permettre d'inspecter concrètement ce que sont ces colis sans alourdir le résultat.
-  const MAX_EXAMPLES_PER_BUCKET = 25;
-  const skippedNoLivreurExamples: Record<string, SkippedRowExample[]> = {};
-  const skippedNoDispatchExamples: Record<string, SkippedRowExample[]> = {};
   const flatRows: FlatRow[] = [];
-
-  const buildExample = (row: any, statut: string): SkippedRowExample => ({
-    tracking: String(findKey(row, keysMapping.tracking) || "").trim(),
-    reference: String(findKey(row, keysMapping.reference) || "").trim(),
-    client: String(findKey(row, keysMapping.client) || "").trim(),
-    livreur: String(findKey(row, keysMapping.livreur) || "").trim(),
-    station: String(findKey(row, keysMapping.stationDest) || "").trim(),
-    expedieLe: String(findKey(row, keysMapping.expedieLe) || "").trim(),
-    livreLe: String(findKey(row, keysMapping.livreLe) || "").trim(),
-    montant: parseNumber(findKey(row, keysMapping.montant)),
-    statut,
-  });
-
-  const addExample = (bucket: Record<string, SkippedRowExample[]>, statut: string, row: any) => {
-    if (!bucket[statut]) bucket[statut] = [];
-    if (bucket[statut].length < MAX_EXAMPLES_PER_BUCKET) {
-      bucket[statut].push(buildExample(row, statut));
-    }
-  };
 
   for (let i = 0; i < totalLines; i++) {
     const row = rawRows[i];
@@ -252,9 +229,14 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     // Statut brut du colis, lu en premier pour pouvoir qualifier les lignes ignorées ci-dessous
     const statutBrut = String(findKey(row, keysMapping.statut) || "").trim() || "Statut non renseigné";
 
-    // Récupérer et normaliser les données du colis (lues avant tout filtre, pour que la ligne à plat
-    // ci-dessous reste complète même pour les colis ignorés — nécessaire au détail ligne par ligne)
-    const liveurName = String(findKey(row, keysMapping.livreur) || "/").trim();
+    // Récupérer et normaliser les données du colis
+    const liveurNameRaw = String(findKey(row, keysMapping.livreur) || "").trim();
+    // Un colis sans livreur assigné compte quand même dans les totaux réseau (chaque colis a une
+    // fin de vie : livré, retour ou en traitement, peu importe s'il a été formellement dispatché
+    // à un livreur) — il est simplement regroupé sous un livreur "virtuel" plutôt qu'ignoré.
+    const liveurName = (!liveurNameRaw || liveurNameRaw === "/" || liveurNameRaw.toLowerCase() === "null")
+      ? "(Sans livreur)"
+      : liveurNameRaw;
     const stationDestination = String(findKey(row, keysMapping.stationDest) || "Station Inconnue").trim();
     const stationEffective = stationDestination === "/" ? "Sans Station" : stationDestination;
 
@@ -300,7 +282,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       reference: String(findKey(row, keysMapping.reference) || "").trim(),
       client: String(findKey(row, keysMapping.client) || "").trim(),
       expediteur: String(findKey(row, keysMapping.expediteur) || "").trim(),
-      livreur: liveurName === "/" ? "" : liveurName,
+      livreur: liveurNameRaw,
       station: stationEffective,
       wilaya: wilayaStr,
       commune: communeStr,
@@ -318,23 +300,6 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       isRetour,
     });
 
-    if (!liveurName || liveurName === "/" || liveurName === "" || liveurName === "null") {
-      skippedNoLivreur++;
-      skippedNoLivreurByStatut[statutBrut] = (skippedNoLivreurByStatut[statutBrut] || 0) + 1;
-      addExample(skippedNoLivreurExamples, statutBrut, row);
-      continue; // Ignorer les colis sans livreur
-    }
-
-    // Si le colis n'est pas dispatché (pas pris en charge), l'ignorer ou le comptabiliser s'il y a un livreur
-    // Le brief dit : "total_dispatches = nb de lignes avec 'Dispatché au livreur le' non vide"
-    // Donc nous ne comptons que si dispatché est actif !
-    if (!isDispatched) {
-      skippedNoDispatch++;
-      skippedNoDispatchByStatut[statutBrut] = (skippedNoDispatchByStatut[statutBrut] || 0) + 1;
-      addExample(skippedNoDispatchExamples, statutBrut, row);
-      continue;
-    }
-
     // Calculs de délais
     const dDisp = getHoursDiff(dispLivreurDate, livreDate);
     const dFdr = getHoursDiff(fdrActiveeDate, livreDate);
@@ -350,6 +315,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
         dispatches: 0,
         livres: 0,
         retours: 0,
+        enTraitement: 0,
         delaisDisp: [],
         delaisFdr: [],
         delaisEnc: [],
@@ -379,9 +345,21 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     if (isLivred) {
       liveRecord.livres += 1;
       liveRecord.montantEnc += montant;
-    }
-    if (isRetour) {
+    } else if (isRetour) {
       liveRecord.retours += 1;
+    } else {
+      // Ni livré ni retourné : le colis est toujours "en traitement" (peu importe s'il a été
+      // dispatché à un livreur ou non — un colis compte toujours dans un des 3 états).
+      liveRecord.enTraitement += 1;
+    }
+
+    // Reçus / encore en traitement par jour ("Expédié le" = date d'entrée du colis dans le
+    // système), pour le rapport dédié — sur TOUT l'historique, pas seulement les 60 derniers jours.
+    if (expDate) {
+      const recDateStr = expDate.toISOString().slice(0, 10);
+      if (!dailyReceptionMap[recDateStr]) dailyReceptionMap[recDateStr] = { recus: 0, enTraitement: 0 };
+      dailyReceptionMap[recDateStr].recus += 1;
+      if (!isLivred && !isRetour) dailyReceptionMap[recDateStr].enTraitement += 1;
     }
 
     // Agrégats réseau par expéditeur / par zone
@@ -579,6 +557,7 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       dispatches: s.dispatches,
       livres: s.livres,
       retours: s.retours,
+      en_traitement: s.enTraitement,
       taux_livraison,
       taux_retour,
       delai_moy_h,
@@ -661,12 +640,17 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   onProgress?.(98);
 
-  // Calcul du global final
+  // Calcul du global final. Chaque colis compte désormais dans le total réseau qu'il ait ou non
+  // été formellement dispatché à un livreur — total_dispatches représente ici le total de colis,
+  // et non_livres regroupe ceux dont la vie n'est pas encore terminée (ni livré, ni retour),
+  // calculé par somme directe (pas par soustraction) pour rester cohérent même si livres/retours
+  // ne sont plus mutuellement exclusifs à l'avenir.
   const total_dispatches = recap.reduce((s, x) => s + x.dispatches, 0);
   const total_livres = recap.reduce((s, x) => s + x.livres, 0);
   const total_retours = recap.reduce((s, x) => s + x.retours, 0);
-  const non_livres = Math.max(0, total_dispatches - total_livres);
-  const nb_livreurs = Array.from(new Set(recap.map(x => x.livreur))).length;
+  const non_livres = recap.reduce((s, x) => s + x.en_traitement, 0);
+  // "(Sans livreur)" est un regroupement technique, pas un livreur réel : exclu du décompte.
+  const nb_livreurs = Array.from(new Set(recap.filter(x => x.livreur !== "(Sans livreur)").map(x => x.livreur))).length;
 
   const taux_global = total_dispatches > 0 ? parseFloat(Math.min(100, (total_livres / total_dispatches) * 100).toFixed(1)) : 0;
   
@@ -675,11 +659,6 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
 
   const totalDEnc = recap.reduce((s, x) => s + (x.delai_enc_h * x.livres), 0);
   const delai_encaiss_moy = total_livres > 0 ? parseFloat((totalDEnc / total_livres).toFixed(1)) : 0;
-
-  const toSortedBreakdown = (byStatut: Record<string, number>, examples: Record<string, SkippedRowExample[]>) =>
-    Object.entries(byStatut)
-      .map(([statut, count]) => ({ statut, count, examples: examples[statut] || [] }))
-      .sort((a, b) => b.count - a.count);
 
   // Volet B : vue réseau par expéditeur
   const expediteurs: ExpediteurRecap[] = Object.entries(globalExpediteurMap)
@@ -743,10 +722,6 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     delai_encaiss_moy,
     non_livres,
     lignes_fichier: totalLines,
-    lignes_ignorees_sans_livreur: skippedNoLivreur,
-    lignes_ignorees_sans_dispatch: skippedNoDispatch,
-    statuts_sans_livreur: toSortedBreakdown(skippedNoLivreurByStatut, skippedNoLivreurExamples),
-    statuts_sans_dispatch: toSortedBreakdown(skippedNoDispatchByStatut, skippedNoDispatchExamples),
     delai_restitution_cod_moy_h,
     taux_anomalie,
     cout_livraison_moyen,
@@ -757,6 +732,16 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
     montant_cod_livre_total
   };
 
+  // Historique complet reçus/en traitement par jour (non plafonné, contrairement à `trend`),
+  // pour le rapport avec bascule jour/semaine/mois.
+  const reception_journaliere: ReceptionJour[] = Object.keys(dailyReceptionMap)
+    .sort()
+    .map(dateIso => ({
+      date: dateIso,
+      recus: dailyReceptionMap[dateIso].recus,
+      en_traitement: dailyReceptionMap[dateIso].enTraitement
+    }));
+
   onProgress?.(100);
 
   return {
@@ -766,7 +751,8 @@ export function parseEcotrackRawData(rawRows: any[], onProgress?: (p: number) =>
       trend,
       by_station,
       expediteurs,
-      zones
+      zones,
+      reception_journaliere
     },
     flatRows
   };

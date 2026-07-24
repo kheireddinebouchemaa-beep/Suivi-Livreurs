@@ -8,7 +8,7 @@ import PerformanceTab from "./components/PerformanceTab";
 import StationsTab from "./components/StationsTab";
 import ExpediteursTab from "./components/ExpediteursTab";
 import ZonesTab from "./components/ZonesTab";
-import LignesIgnoreesTab from "./components/LignesIgnoreesTab";
+import ReceptionTab from "./components/ReceptionTab";
 import ImportModal from "./components/ImportModal";
 import PdfModal from "./components/PdfModal";
 import AlertsPanel from "./components/AlertsPanel";
@@ -139,11 +139,7 @@ export default function App() {
     setData(newData);
     setFileName(importedFileName);
     setSelectedPage("overview");
-    const skipped = newData.global.lignes_ignorees_sans_livreur + newData.global.lignes_ignorees_sans_dispatch;
-    const skippedNote = skipped > 0
-      ? ` (${skipped.toLocaleString('fr-DZ')} lignes ignorées : sans livreur ou jamais dispatchées — voir Vue d'ensemble)`
-      : "";
-    triggerToast(`✅ ${newData.global.total_dispatches.toLocaleString('fr-DZ')} colis chargés avec succès !${skippedNote}`, "success");
+    triggerToast(`✅ ${newData.global.total_dispatches.toLocaleString('fr-DZ')} colis chargés avec succès !`, "success");
 
     try {
       const saved = await saveSnapshot(importedFileName, newData, "import");
@@ -283,7 +279,7 @@ export default function App() {
                 { id: "stations", label: "🏢 Par Station", count: null },
                 { id: "expediteurs", label: "📦 Expéditeurs", count: null },
                 { id: "zones", label: "🗺️ Zones", count: null },
-                { id: "lignes-ignorees", label: "🔍 Lignes ignorées", count: data.global.lignes_ignorees_sans_livreur + data.global.lignes_ignorees_sans_dispatch }
+                { id: "reception", label: "📥 Réception", count: null }
               ].map((tab) => {
                 const isActive = selectedPage === tab.id;
                 return (
@@ -378,7 +374,6 @@ export default function App() {
                       onNavigateToLivreurs={() => setSelectedPage("livreurs")}
                       onNavigateToRetours={() => setSelectedPage("retours")}
                       onNavigateToDelais={() => setSelectedPage("delais")}
-                      onNavigateToLignesIgnorees={() => setSelectedPage("lignes-ignorees")}
                     />
                   )}
 
@@ -410,8 +405,8 @@ export default function App() {
                     <ZonesTab data={data} />
                   )}
 
-                  {selectedPage === "lignes-ignorees" && (
-                    <LignesIgnoreesTab data={data} snapshotId={snapshotId} />
+                  {selectedPage === "reception" && (
+                    <ReceptionTab data={data} />
                   )}
                 </motion.div>
               </AnimatePresence>
